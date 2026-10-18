@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>جهان</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; background: #000; color: #eef2ff; font-family: 'Vazirmatn', system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  body::after { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.7)); }
+  .hud { position: fixed; inset: 0; z-index: 2; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
+  header { transition: opacity .26s; }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -.5px; }
+  #fact { font-size: 13px; color: #a8b8e0; margin-top: 4px; max-width: 30em; line-height: 1.8; }
+  .bot { display: grid; gap: 9px; }
+  .row { display: flex; align-items: center; gap: 10px; direction: ltr; font-size: 12px; color: #9fb0d8; }
+  #bar { height: 6px; border: 1.5px solid #cfe0ff; border-top: 0; }
+  #barL { direction: rtl; }
+  #view { font-size: 12px; color: #8294bd; line-height: 1.7; }
+  input[type=range] { flex: 1; pointer-events: auto; accent-color: #9cc4ff; }
+  .btns { display: flex; gap: 8px; }
+  button { pointer-events: auto; font: inherit; font-size: 14px; color: #eef2ff; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 999px; padding: 8px 20px; cursor: pointer; }
+  button:hover { background: rgba(255,255,255,.16); }
+  button:focus-visible, input:focus-visible { outline: 2px solid #9cc4ff; outline-offset: 2px; }
+  #hint { font-size: 12px; color: #6f7fa8; transition: opacity 1s; }
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="سفر سه‌بعدی از زمین تا مرز جهان قابل مشاهده"></canvas>
+<div class="hud">
+  <header><h1 id="name"></h1><p id="fact"></p></header>
+  <div class="bot">
+    <p id="hint">دو انگشت را به هم نزدیک کن (یا اسلایدر را بکش) تا دور شوی</p>
+    <div class="row"><div id="bar"></div><span id="barL"></span></div>
+    <p id="view"></p>
+    <div class="row"><span>زمین</span><input id="sl" type="range" step="0.001" aria-label="مقیاس"><span>مرز جهان</span></div>
+    <div class="btns"><button id="go" type="button">سفر به پایان جهان</button><button id="home" type="button">بازگشت به زمین</button></div>
+  </div>
+</div>
+<script>
+(() => {
+  const AU = 1.496e11, LY = 9.461e15, TAU = Math.PI * 2, SMIN = 7.25, SMAX = 27.1, RU = 4.4e26;
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d'), $ = id => document.getElementById(id);
+  let W, H, dpr;
+  const rs = () => { dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; };
+  addEventListener('resize', rs); rs();
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), L = (a, b, t) => a + (b - a) * t;
+  const ss = (x, a, b) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  let seed = 11; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647, gs = () => (rnd() + rnd() + rnd() + rnd() - 2) * 1.7;
+  const fa = (v, d = 1) => v.toLocaleString('fa-IR', { maximumFractionDigits: v >= 10 ? 0 : d });
+  const glow = (r, g, b) => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(.25, `rgba(${r},${g},${b},.35)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return c; };
+  const GW = glow(255, 244, 225), GB = glow(160, 195, 255), GO = glow(255, 205, 150);
+
+  // ---------- Earth: rotating, with city lights ----------
+  const H3 = (x, y, z) => { let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177); h = Math.imul(h ^ (h >>> 13), 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const vn = (x, y, z) => { const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), f = q => q * q * (3 - 2 * q), u = f(x - xi), v = f(y - yi), w = f(z - zi);
+    return L(L(L(H3(xi, yi, zi), H3(xi + 1, yi, zi), u), L(H3(xi, yi + 1, zi), H3(xi + 1, yi + 1, zi), u), v), L(L(H3(xi, yi, zi + 1), H3(xi + 1, yi, zi + 1), u), L(H3(xi, yi + 1, zi + 1), H3(xi + 1, yi + 1, zi + 1), u), v), w); };
+  const fbm = (x, y, z) => vn(x, y, z) * .5 + vn(x * 2, y * 2, z * 2) * .25 + vn(x * 4, y * 4, z * 4) * .125 + vn(x * 8, y * 8, z * 8) * .0625;
+  const TW = 256, TH = 128, dayT = new Uint8Array(TW * TH * 3), litT = new Uint8Array(TW * TH);
+  for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
+    const lon = (i + .5) / TW * TAU, lat = ((j + .5) / TH - .5) * Math.PI, cl = Math.cos(lat), a = cl * Math.cos(lon) * 2.6 + 5, b = Math.sin(lat) * 2.6 + 5, c = cl * Math.sin(lon) * 2.6 + 5, n = fbm(a, b, c), o = j * TW + i; let R, G, B, lit = 0;
+    if (Math.abs(lat) > 1.15) R = G = B = 235;
+    else if (n > .5) { const t = clamp((n - .5) * 4, 0, 1); R = 60 + t * 90; G = 125 - t * 15; B = 55 + t * 10; lit = clamp((vn(a * 2.3, b * 2.3, c * 2.3) - .6) * 8, 0, 1) * (H3(i, j, 1) > .45 ? 255 : 90); }
+    else { R = 12; G = 60 + n * 90; B = 140 + n * 80; }
+    const k = clamp((fbm(a * 1.2 + 9, b * 1.2 + 9, c * 1.2 + 9) - .6) * 4, 0, .8);
+    dayT[o * 3] = R + (255 - R) * k; dayT[o * 3 + 1] = G + (255 - G) * k; dayT[o * 3 + 2] = B + (255 - B) * k; litT[o] = lit;
+  }
+  const ES = 200, NF = 24, dayF = [], litF = [], disc = [];
+  for (let j = 0; j < ES; j++) for (let i = 0; i < ES; i++) { const px = (i + .5) / ES * 2 - 1, py = (j + .5) / ES * 2 - 1, r2 = px * px + py * py; if (r2 > 1) continue;
+    disc.push(j * ES + i, Math.atan2(px, Math.sqrt(1 - r2)), clamp(Math.floor((Math.asin(-py) / Math.PI + .5) * TH), 0, TH - 1)); }
+  for (let f = 0; f < NF; f++) {
+    const rot = f / NF * TAU, cd = document.createElement('canvas'), cl = document.createElement('canvas'); cd.width = cd.height = cl.width = cl.height = ES;
+    const xd = cd.getContext('2d'), xl = cl.getContext('2d'), id = xd.createImageData(ES, ES), il = xl.createImageData(ES, ES);
+    for (let k = 0; k < disc.length; k += 3) { const p = disc[k] * 4, u = (((disc[k + 1] + rot) / TAU) % 1 + 1) % 1, o = disc[k + 2] * TW + Math.min(TW - 1, Math.floor(u * TW));
+      id.data[p] = dayT[o * 3]; id.data[p + 1] = dayT[o * 3 + 1]; id.data[p + 2] = dayT[o * 3 + 2]; id.data[p + 3] = 255; il.data[p] = 255; il.data[p + 1] = 200; il.data[p + 2] = 110; il.data[p + 3] = litT[o]; }
+    xd.putImageData(id, 0, 0); xl.putImageData(il, 0, 0); dayF.push(cd); litF.push(cl);
+  }
+
+  // ---------- data ----------
+  const PL = [['عطارد', .387, 2.44e6, '#b8b8b8', .241], ['زهره', .723, 6.05e6, '#e8c88a', .615], ['زمین', 1, 6.371e6, '#4a8fe0', 1], ['مریخ', 1.524, 3.39e6, '#d9663c', 1.881],
+    ['مشتری', 5.203, 6.99e7, '#d8b48a', 11.86], ['زحل', 9.537, 5.82e7, '#e3cf9a', 29.46], ['اورانوس', 19.19, 2.54e7, '#8fd8e0', 84], ['نپتون', 30.07, 2.46e7, '#4a62d8', 164.8]];
+  const ph = PL.map(() => rnd() * TAU), ang = (i, t) => ph[i] + TAU * t / (80 * PL[i][4]);
+  const belt = (n, f) => { const x = [], y = [], z = []; for (let i = 0; i < n; i++) { const [r, a, h] = f(); x.push(r * Math.cos(a)); y.push(r * Math.sin(a)); z.push(h); } return { x, y, z }; };
+  const BELT = belt(700, () => [AU * (2.2 + rnd()), rnd() * TAU, gs() * .05 * AU]), KB = belt(600, () => [AU * (30 + rnd() * 20), rnd() * TAU, gs() * 3 * AU]);
+  const OORT = belt(1000, () => { const r = AU * Math.pow(10, 3.3 + rnd() * 1.7), u = rnd() * 2 - 1; return [r * Math.sqrt(1 - u * u), rnd() * TAU, r * u]; });
+  const LOC = { x: [], y: [], z: [] }; for (let i = 0; i < 2500; i++) { LOC.x.push(gs() * 1.2e19); LOC.y.push(gs() * 1.2e19); LOC.z.push(gs() * 1.2e19); }
+  const NS = [['آلفا قنطورس', 4.37, .5], ['شباهنگ', 8.6, 4.1], ['نسر واقع', 25, .2], ['سماک رامح', 37, 3.6], ['ستاره‌ی قطبی', 430, 2.4], ['ابط‌الجوزا', 550, 1]]
+    .map(([n, d, a]) => ({ n, x: d * LY * Math.cos(a), y: d * LY * Math.sin(a), z: (rnd() - .5) * d * LY * .3 }));
+  function spiral(n, R, arms, incl, pa, cx, cy) {
+    const o = [0, 1, 2].map(() => ({ x: [], y: [], z: [] })), ci = Math.cos(incl), si = Math.sin(incl), ca = Math.cos(pa), sa = Math.sin(pa);
+    for (let i = 0; i < n; i++) { const k = i % 4 === 0 ? 0 : i % 16 === 1 ? 2 : 1; let x, y, z;
+      if (k === 0) { x = gs() * R * .17; y = gs() * R * .17; z = gs() * R * .1; }
+      else { const r = R * (.08 + .92 * Math.pow(rnd(), .8)), th = Math.log(r / (.06 * R)) / .35 + Math.floor(rnd() * arms) * TAU / arms + gs() * .22; x = r * Math.cos(th); y = r * Math.sin(th); z = gs() * R * .012; }
+      const y1 = y * ci - z * si, z1 = y * si + z * ci; o[k].x.push(cx + x * ca - y1 * sa); o[k].y.push(cy + x * sa + y1 * ca); o[k].z.push(z1); }
+    return { s: o, x: cx, y: cy, R };
+  }
+  const RM = 4.7e20, GA = 3.7, G = [2.46e20 * Math.cos(GA), 2.46e20 * Math.sin(GA)], A = [2.37e22 * Math.cos(.7), 2.37e22 * Math.sin(.7)];
+  const GALS = [spiral(9000, RM, 4, .08, 0, G[0], G[1]), spiral(2600, 1.05e21, 2, 1.3, .6, A[0], A[1]), spiral(900, 2.8e20, 2, .9, 1, A[0] + 7e21 * Math.cos(1.5), A[1] + 7e21 * Math.sin(1.5))];
+  GALS[0].n = 'راه شیری'; GALS[1].n = 'آندرومدا'; GALS[2].n = 'مثلث';
+  const SAT = [[1.5e21, 4.4, 6.6e19], [1.86e21, 4.2, 3.3e19]].map(([d, a, R]) => ({ x: d * Math.cos(a), y: d * Math.sin(a), R }));
+  for (let i = 0; i < 14; i++) { const a = rnd() * TAU, r = 6e21 * rnd(), o = i % 2 ? A : [0, 0]; SAT.push({ x: o[0] + r * Math.cos(a), y: o[1] + r * Math.sin(a), R: 2e19 + rnd() * 4e19 }); }
+
+  const NODES = [[5.1e23, -.6, 2e22, 150, 'خوشه‌ی سنبله'], [2.2e24, 2.6, 6e22, 160, 'جاذب بزرگ'], [3e24, 1.2, 8e22, 150, 'خوشه‌ی گیسو'], [6.1e24, 2.9, 1.5e23, 170, 'ابرخوشه‌ی شاپلی']]
+    .map(([d, a, s, n, l]) => ({ x: d * Math.cos(a), y: d * Math.sin(a), z: gs() * d * .12, s, n, l }));
+  NODES.push({ x: A[0] / 2, y: A[1] / 2, z: 0, s: 3e22, n: 120 });
+  for (let i = 0; i < 110; i++) { const u = rnd() * 2 - 1, a = rnd() * TAU, r = RU * .95 * Math.cbrt(rnd()), q = Math.sqrt(1 - u * u); NODES.push({ x: r * q * Math.cos(a), y: r * q * Math.sin(a), z: r * u, s: RU * .008, n: 26 }); }
+  const WF = { x: [], y: [], z: [] }, WC = { x: [], y: [], z: [] }, add = (S, x, y, z) => { S.x.push(x); S.y.push(y); S.z.push(z); };
+  NODES.forEach(a => {
+    for (let k = 0; k < a.n; k++) add(WC, a.x + gs() * a.s, a.y + gs() * a.s, a.z + gs() * a.s);
+    NODES.map(b => [Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z), b]).sort((p, q) => p[0] - q[0]).slice(1, 4).forEach(([len, b]) => {
+      for (let k = 0, c = Math.floor(len / RU * 240); k < c; k++) { const t = rnd(), e = RU * .007; add(WF, L(a.x, b.x, t) + gs() * e, L(a.y, b.y, t) + gs() * e, L(a.z, b.z, t) + gs() * e); } });
+  });
+  const cmb = document.createElement('canvas'); cmb.width = cmb.height = 512;
+  { const x = cmb.getContext('2d'), cols = ['59,42,107', '123,45,94', '209,80,58', '242,166,90', '70,60,140']; x.fillStyle = 'rgb(90,45,110)'; x.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 600; i++) { const px = rnd() * 512, py = rnd() * 512, r = 6 + rnd() * 22, c = cols[Math.floor(rnd() * 5)], g = x.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, `rgba(${c},.7)`); g.addColorStop(1, `rgba(${c},0)`); x.fillStyle = g; x.fillRect(px - r, py - r, 2 * r, 2 * r); }
+    x.globalCompositeOperation = 'destination-in'; const m = x.createRadialGradient(256, 256, 0, 256, 256, 256);
+    m.addColorStop(0, 'rgba(0,0,0,0)'); m.addColorStop(.935, 'rgba(0,0,0,0)'); m.addColorStop(.975, 'rgba(0,0,0,1)'); m.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = m; x.fillRect(0, 0, 512, 512); }
+  const BG = Array.from({ length: 160 }, () => [rnd(), rnd(), rnd() * .6 + .2]);
+
+  const LV = [[8.7, 'زمین', 'قطر زمین حدود ۱۲٬۷۴۲ کیلومتر است.'], [10.2, 'زمین و ماه', 'ماه حدود ۳۸۴٬۰۰۰ کیلومتر دورتر است؛ نور در ۱٫۳ ثانیه به آن می‌رسد.'],
+    [12.3, 'منظومه‌ی شمسی درونی', 'نور خورشید حدود ۸ دقیقه و ۲۰ ثانیه تا زمین راه می‌آید.'], [14.3, 'منظومه‌ی شمسی', 'نپتون ۳۰ برابر دورتر از زمین از خورشید است.'],
+    [16.3, 'کمربند کایپر و ابر اورت', 'ابر اورت احتمالاً تا حدود یک سال نوری ادامه دارد.'], [19.4, 'همسایگی ستاره‌ای', 'نزدیک‌ترین ستاره‌ی بعد از خورشید حدود ۴٫۲ سال نوری فاصله دارد.'],
+    [21.7, 'کهکشان راه شیری', 'صدها میلیارد ستاره در پهنایی حدود ۱۰۰٬۰۰۰ سال نوری.'], [23.3, 'گروه محلی', 'بیش از ۸۰ کهکشان؛ آندرومدا بزرگ‌ترینشان است.'],
+    [25, 'ابرخوشه‌ی محلی', 'حدود ۱۱۰ میلیون سال نوری پهنا، با ده‌ها هزار کهکشان.'], [26.2, 'شبکه‌ی کیهانی', 'کهکشان‌ها روی رشته‌های عظیمی می‌نشینند و میانشان حفره‌های تهی است.'],
+    [99, 'جهان قابل مشاهده', 'قطر حدود ۹۳ میلیارد سال نوری؛ فراتر از این مرز، نوری هنوز به ما نرسیده.']];
+  const UN = [['کیلومتر', 1e3], ['واحد نجومی', AU], ['سال نوری', LY], ['میلیون سال نوری', LY * 1e6], ['میلیارد سال نوری', LY * 1e9]];
+  const unit = m => m < 3e10 ? UN[0] : m < 1e15 ? UN[1] : m < LY * 1e6 ? UN[2] : m < LY * 1e9 ? UN[3] : UN[4];
+  const LT = [[60, 1, 'ثانیه'], [3600, 60, 'دقیقه'], [86400, 3600, 'ساعت'], [3.156e7, 86400, 'روز'], [3.156e10, 3.156e7, 'سال'], [3.156e13, 3.156e10, 'هزار سال'], [3.156e16, 3.156e13, 'میلیون سال'], [1e99, 3.156e16, 'میلیارد سال']];
+
+  // ---------- state & input ----------
+  let s = SMIN, sT = SMIN, auto = false, t = 0, last = performance.now(), lvI = -1, lvT;
+  const sl = $('sl'), goB = $('go'); sl.min = SMIN; sl.max = SMAX; sl.value = SMIN;
+  const touched = () => { $('hint').style.opacity = 0; };
+  const setAuto = v => { auto = v; goB.textContent = v ? 'توقف' : 'سفر به پایان جهان'; };
+  goB.onclick = () => { touched(); setAuto(!auto); };
+  $('home').onclick = () => { touched(); setAuto(false); sT = SMIN; };
+  sl.oninput = () => { touched(); setAuto(false); sT = +sl.value; };
+  const ptr = new Map(); let lastD = 0;
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, [e.clientX, e.clientY]); touched();
+    if (ptr.size === 2) { const [a, b] = [...ptr.values()]; lastD = Math.hypot(a[0] - b[0], a[1] - b[1]); } });
+  cv.addEventListener('pointermove', e => { const p = ptr.get(e.pointerId); if (!p) return; const dy = e.clientY - p[1]; ptr.set(e.pointerId, [e.clientX, e.clientY]); setAuto(false);
+    if (ptr.size === 1) sT = clamp(sT - dy * .012, SMIN, SMAX);
+    else if (ptr.size === 2) { const [a, b] = [...ptr.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (lastD) sT = clamp(sT - Math.log10(d / lastD) * 2.6, SMIN, SMAX); lastD = d; } });
+  const up = e => { ptr.delete(e.pointerId); lastD = 0; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', e => { e.preventDefault(); touched(); setAuto(false); sT = clamp(sT + e.deltaY * .0016, SMIN, SMAX); }, { passive: false });
+
+  // ---------- 3D camera & drawing ----------
+  let mpp, hw, hh, ox, oy, cps, sps, cp, sp, PX, PY;
+  const pj = (x, y, z) => { const dx = x - ox, dy = y - oy; PX = hw + (dx * cps - dy * sps) / mpp; PY = hh - ((dx * sps + dy * cps) * sp + z * cp) / mpp; };
+  function pts(A, a, size, fill) {
+    if (a < .01) return; ctx.globalAlpha = a; ctx.fillStyle = fill; ctx.beginPath(); const Z = A.z;
+    for (let i = 0; i < A.x.length; i++) { const x = A.x[i] - ox, y = A.y[i] - oy, X = hw + (x * cps - y * sps) / mpp, Y = hh - ((x * sps + y * cps) * sp + (Z ? Z[i] : 0) * cp) / mpp;
+      if (X > -2 && X < W + 2 && Y > -2 && Y < H + 2) ctx.rect(X, Y, size, size); }
+    ctx.fill(); ctx.globalAlpha = 1;
+  }
+  const label = (txt, x, y, a, col = '#cfe0ff') => { if (a < .02) return; ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.globalAlpha = 1; };
+  const orbit = (x, y, R, a) => { if (R > 6 && R < 4000) { ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(x, y, R, R * sp, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } };
+  function ball(x, y, r, col, lx, ly) {
+    if (r < 1.8) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, Math.max(r, 1.4), 0, TAU); ctx.fill(); return; }
+    const g = ctx.createRadialGradient(x + lx * r * .4, y + ly * r * .4, r * .1, x, y, r); g.addColorStop(0, '#fff'); g.addColorStop(.25, col); g.addColorStop(1, '#05060c');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  }
+  function drawEarth(x, y, r, lx, ly) {
+    if (r < 5) { ctx.fillStyle = '#4a8fe0'; ctx.beginPath(); ctx.arc(x, y, Math.max(r, 1.5), 0, TAU); ctx.fill(); return; }
+    const f = ((t / 40 * NF) % NF + NF) % NF, i = Math.min(NF - 1, Math.floor(f)), fr = f - i, j = (i + 1) % NF, d = 2 * r;
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip();
+    ctx.drawImage(dayF[i], x - r, y - r, d, d); ctx.globalAlpha = fr; ctx.drawImage(dayF[j], x - r, y - r, d, d); ctx.globalAlpha = 1;
+    const g = ctx.createLinearGradient(x + lx * r, y + ly * r, x - lx * r, y - ly * r);
+    g.addColorStop(0, 'rgba(0,0,12,0)'); g.addColorStop(.5, 'rgba(0,0,12,.05)'); g.addColorStop(.78, 'rgba(0,0,12,.82)'); g.addColorStop(1, 'rgba(0,0,12,.96)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, d, d);
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .9 * (1 - fr); ctx.drawImage(litF[i], x - r, y - r, d, d); ctx.globalAlpha = .9 * fr; ctx.drawImage(litF[j], x - r, y - r, d, d); ctx.restore();
+    ctx.globalCompositeOperation = 'lighter'; const a = ctx.createRadialGradient(x, y, r * .96, x, y, r * 1.14);
+    a.addColorStop(0, 'rgba(90,160,255,.5)'); a.addColorStop(1, 'rgba(90,160,255,0)'); ctx.fillStyle = a; ctx.beginPath(); ctx.arc(x, y, r * 1.14, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function draw() {
+    mpp = Math.pow(10, s) / W; hw = W / 2; hh = H / 2;
+    const psi = -.35 + .22 * (s - SMIN) + t * .012, phi = .5 + .5 * ss(s, 18, 20.5) - .3 * ss(s, 22.5, 25);
+    cps = Math.cos(psi); sps = Math.sin(psi); cp = Math.cos(phi); sp = Math.sin(phi);
+    const eA = ang(2, t), E = [AU * Math.cos(eA), AU * Math.sin(eA)];
+    let w = ss(s, 9.3, 10.6); ox = E[0] * (1 - w); oy = E[1] * (1 - w);
+    w = ss(s, 19, 20.8); ox = L(ox, G[0], w); oy = L(oy, G[1], w);
+    w = ss(s, 21.4, 22.6); ox = L(ox, A[0] / 2, w); oy = L(oy, A[1] / 2, w);
+    w = ss(s, 23.6, 25); ox *= 1 - w; oy *= 1 - w;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    const bgA = 1 - ss(s, 21, 23); if (bgA > .01) { ctx.fillStyle = '#fff'; BG.forEach(b => { ctx.globalAlpha = b[2] * bgA * (.4 + .2 * Math.sin(t * 2 + b[0] * 40)); ctx.fillRect(b[0] * W, b[1] * H, 1.2, 1.2); }); ctx.globalAlpha = 1; }
+    ctx.font = '12px Vazirmatn, sans-serif'; ctx.textAlign = 'center'; ctx.globalCompositeOperation = 'lighter';
+
+    pts(BELT, ss(s, 10.7, 11.7) * (1 - ss(s, 13, 14)) * .6, 1.1, '#c9b79c');
+    pts(KB, ss(s, 11.8, 12.8) * (1 - ss(s, 14, 15)) * .6, 1.2, '#9bb');
+    pts(OORT, ss(s, 13.5, 14.5) * (1 - ss(s, 17, 18.5)) * .6, 1.3, '#cde');
+    const aL = ss(s, 15.5, 17) * (1 - ss(s, 19.3, 20.5)); pts(LOC, aL * .7, 1.3, '#dde8ff');
+
+    const gv = [ss(s, 18.3, 20), ss(s, 19.5, 20.5) * (1 - ss(s, 24, 25)), ss(s, 19.5, 20.5) * (1 - ss(s, 24, 25))];
+    GALS.forEach((g, i) => {
+      pj(g.x, g.y, 0); const pr = g.R / mpp, v = gv[i]; if (v < .01 || PX < -pr * 2 - 60 || PX > W + pr * 2 + 60 || PY < -pr * 2 - 60 || PY > H + pr * 2 + 60) return;
+      const pa = ss(pr, 14, 60) * v, sz = clamp(.9 + pr / 500, .9, 2.2);
+      pts(g.s[0], pa * .8, sz, '#ffd9a0'); pts(g.s[1], pa * .75, sz, '#bcd6ff'); pts(g.s[2], pa * .7, sz + .4, '#ff9cc4');
+      const gz = Math.max(g.R * 2.6 / mpp, 6); ctx.globalAlpha = v * .6 * (1 - ss(pr, 60, 400) * .75); ctx.drawImage(i ? GB : GO, PX - gz / 2, PY - gz / 2, gz, gz); ctx.globalAlpha = 1;
+    });
+    const sv = gv[1]; if (sv > .01) SAT.forEach(g => { pj(g.x, g.y, 0); const sz = Math.max(g.R * 2.4 / mpp, 3); if (PX > -sz && PX < W + sz && PY > -sz && PY < H + sz) { ctx.globalAlpha = sv * .8; ctx.drawImage(GB, PX - sz / 2, PY - sz / 2, sz, sz); ctx.globalAlpha = 1; } });
+    const wA = ss(s, 22.4, 24.2); pts(WF, wA * .5, 1.1, '#9fb8ff'); pts(WC, wA * .8, 1.3, '#ffd6a8');
+    if (wA > .01) NODES.forEach(n => { pj(n.x, n.y, n.z); const sz = Math.max(n.s * 12 / mpp, 6); if (PX > -sz && PX < W + sz && PY > -sz && PY < H + sz) { ctx.globalAlpha = wA * (n.n > 100 ? .5 : .22); ctx.drawImage(GO, PX - sz / 2, PY - sz / 2, sz, sz); ctx.globalAlpha = 1; } });
+    ctx.globalCompositeOperation = 'source-over';
+
+    NS.forEach(n => { pj(n.x, n.y, n.z); if (PX < 0 || PX > W || PY < 0 || PY > H) return; ctx.globalAlpha = aL; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(PX, PY, 2, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label(n.n, PX, PY - 8, aL * .9); });
+    GALS.forEach((g, i) => { pj(g.x, g.y, 0); const a = i === 0 ? ss(s, 20.2, 21) * (1 - ss(s, 22.8, 23.6)) : ss(s, 21.3, 22.3) * (1 - ss(s, 23.2, 24)); label(g.n, PX, PY - Math.max(g.R * sp / mpp, 4) - 10, a); });
+    const nlA = ss(s, 23.4, 24.2) * (1 - ss(s, 26.2, 26.7)); NODES.forEach(n => { if (n.l) { pj(n.x, n.y, n.z); label(n.l, PX, PY - 12, nlA * .9); } });
+    const cs = 2 * RU / mpp, cA = ss(s, 25.6, 26.6); pj(0, 0, 0);
+    if (cA > .01 && cs < 16000) { ctx.globalAlpha = cA; ctx.drawImage(cmb, PX - cs / 2, PY - cs / 2, cs, cs); ctx.globalAlpha = 1; label('مرز جهان قابل مشاهده', PX, PY + RU / mpp + 22, ss(s, 26.3, 26.9), '#ffc9a0'); }
+
+    // solar system
+    const aP = 1 - ss(s, 13.2, 14.4); pj(0, 0, 0); const sx = PX, sy = PY;
+    if (aP > .01) {
+      PL.forEach(p => orbit(sx, sy, p[1] * AU / mpp, aP));
+      if (s < 10.6) { pj(E[0], E[1], 0); orbit(PX, PY, 3.844e8 / mpp, 1); }
+      PL.forEach((p, i) => {
+        const a = ang(i, t), wx = p[1] * AU * Math.cos(a), wy = p[1] * AU * Math.sin(a); pj(wx, wy, 0); const x = PX, y = PY; if (x < -80 || x > W + 80 || y < -80 || y > H + 80) return;
+        const r = p[2] / mpp, dl = Math.hypot(sx - x, sy - y) || 1, lx = (sx - x) / dl, ly = (sy - y) / dl; ctx.globalAlpha = aP;
+        if (i === 2) { drawEarth(x, y, r, lx, ly); const ma = t * TAU / 6, mr = 1.737e6 / mpp; pj(wx + 3.844e8 * Math.cos(ma), wy + 3.844e8 * Math.sin(ma), 0);
+          ball(PX, PY, mr, '#b9b9b9', lx, ly); label('ماه', PX, PY - Math.max(mr, 2) - 7, ss(s, 8.4, 8.9) * (1 - ss(s, 9.6, 10.2)) * aP); }
+        else { ball(x, y, r, p[3], lx, ly); if (i === 5 && r > 4) { ctx.strokeStyle = 'rgba(227,207,154,.7)'; ctx.beginPath(); ctx.ellipse(x, y, r * 2.1, r * 2.1 * sp * .35 + r * .25, -.3, 0, TAU); ctx.stroke(); } }
+        ctx.globalAlpha = 1;
+        label(p[0], x, y - Math.max(r, 2) - 7, i === 2 ? (ss(s, 8.2, 8.5) * (1 - ss(s, 8.8, 9.3)) + ss(s, 9.6, 10.3) * (1 - ss(s, 13, 13.8))) * aP : ss(p[1] * AU / mpp, 30, 60) * aP);
+      });
+    }
+    const sunR = Math.max(6.96e8 / mpp, 1.6), sunA = 1 - ss(s, 19, 20.5);
+    if (sunA > .01 && sx > -4000 && sx < W + 4000) { const gz = (sunR * 5 + 14) * (1 + .04 * Math.sin(t * 2)); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = sunA; ctx.drawImage(GO, sx - gz * 1.6, sy - gz * 1.6, gz * 3.2, gz * 3.2); ctx.drawImage(GW, sx - gz, sy - gz, 2 * gz, 2 * gz);
+      ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(sx, sy, sunR, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label('خورشید', sx, sy - sunR - gz * .35 - 6, aP * ss(s, 10.5, 11.2)); }
+
+    // "we are here" beacon
+    const mA = ss(s, 13.6, 15.2); pj(E[0], E[1], 0);
+    if (mA > .01) { ctx.strokeStyle = '#7cc4ff'; ctx.lineWidth = 1.4;
+      for (let k = 0; k < 3; k++) { const p = (t * .5 + k / 3) % 1; ctx.globalAlpha = mA * (1 - p); ctx.beginPath(); ctx.arc(PX, PY, 5 + p * 34, 0, TAU); ctx.stroke(); }
+      ctx.globalAlpha = mA; ctx.fillStyle = '#7cc4ff'; ctx.beginPath(); ctx.arc(PX, PY, 2.5, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label('ما اینجاییم', PX, PY - 46, mA, '#9cd0ff'); }
+  }
+
+  function hud() {
+    const li = LV.findIndex(l => s < l[0]);
+    if (li !== lvI) { lvI = li; const h = document.querySelector('header'); h.style.opacity = 0; clearTimeout(lvT); lvT = setTimeout(() => { $('name').textContent = LV[li][1]; $('fact').textContent = LV[li][2]; h.style.opacity = 1; }, 260); }
+    const m = Math.pow(10, s), [un, uv] = unit(m), sec = m / 3e8, lt = LT.find(x => sec < x[0]);
+    $('view').textContent = 'پهنای کادر: ' + fa(m / uv) + ' ' + un + ' · نور این فاصله را در ' + fa(sec / lt[1]) + ' ' + lt[2] + ' می‌پیماید';
+    const [bn, bm] = unit(mpp * 90), v = mpp * 90 / bm, p10 = Math.pow(10, Math.floor(Math.log10(v))), k = v / p10, nice = (k < 2 ? 1 : k < 5 ? 2 : 5) * p10;
+    $('bar').style.width = nice * bm / mpp + 'px'; $('barL').textContent = fa(nice) + ' ' + bn;
+    if (document.activeElement !== sl) sl.value = s;
+  }
+
+  function frame(now) {
+    const dt = clamp((now - last) / 1000, 0, .05); last = now; t += dt;
+    if (auto) { sT = Math.min(SMAX, sT + dt * .42); if (sT >= SMAX) setAuto(false); }
+    s += (sT - s) * (1 - Math.exp(-dt * 7));
+    draw(); hud(); requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
+
