@@ -55,72 +55,139 @@
     gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(.25, `rgba(${r},${g},${b},.35)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return c; };
   const GW = glow(255, 244, 225), GB = glow(160, 195, 255), GO = glow(255, 205, 150);
 
-  // ---------- Earth: rotating, with city lights ----------
+  // ---------- noise & procedural worlds ----------
   const H3 = (x, y, z) => { let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177); h = Math.imul(h ^ (h >>> 13), 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
   const vn = (x, y, z) => { const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), f = q => q * q * (3 - 2 * q), u = f(x - xi), v = f(y - yi), w = f(z - zi);
     return L(L(L(H3(xi, yi, zi), H3(xi + 1, yi, zi), u), L(H3(xi, yi + 1, zi), H3(xi + 1, yi + 1, zi), u), v), L(L(H3(xi, yi, zi + 1), H3(xi + 1, yi, zi + 1), u), L(H3(xi, yi + 1, zi + 1), H3(xi + 1, yi + 1, zi + 1), u), v), w); };
   const fbm = (x, y, z) => vn(x, y, z) * .5 + vn(x * 2, y * 2, z * 2) * .25 + vn(x * 4, y * 4, z * 4) * .125 + vn(x * 8, y * 8, z * 8) * .0625;
-  const TW = 256, TH = 128, dayT = new Uint8Array(TW * TH * 3), litT = new Uint8Array(TW * TH);
+  const TW = 384, TH = 192, BW = 256, BH = 128, EM = { d: new Uint8Array(TW * TH * 3), c: new Uint8Array(TW * TH), l: new Uint8Array(TW * TH), o: new Uint8Array(TW * TH) };
   for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
-    const lon = (i + .5) / TW * TAU, lat = ((j + .5) / TH - .5) * Math.PI, cl = Math.cos(lat), a = cl * Math.cos(lon) * 2.6 + 5, b = Math.sin(lat) * 2.6 + 5, c = cl * Math.sin(lon) * 2.6 + 5, n = fbm(a, b, c), o = j * TW + i; let R, G, B, lit = 0;
-    if (Math.abs(lat) > 1.15) R = G = B = 235;
-    else if (n > .5) { const t = clamp((n - .5) * 4, 0, 1); R = 60 + t * 90; G = 125 - t * 15; B = 55 + t * 10; lit = clamp((vn(a * 2.3, b * 2.3, c * 2.3) - .6) * 8, 0, 1) * (H3(i, j, 1) > .45 ? 255 : 90); }
-    else { R = 12; G = 60 + n * 90; B = 140 + n * 80; }
-    const k = clamp((fbm(a * 1.2 + 9, b * 1.2 + 9, c * 1.2 + 9) - .6) * 4, 0, .8);
-    dayT[o * 3] = R + (255 - R) * k; dayT[o * 3 + 1] = G + (255 - G) * k; dayT[o * 3 + 2] = B + (255 - B) * k; litT[o] = lit;
+    const lon = (i + .5) / TW * TAU, lat = ((j + .5) / TH - .5) * Math.PI, cl = Math.cos(lat), px = cl * Math.cos(lon), py = Math.sin(lat), pz = cl * Math.sin(lon), o = j * TW + i;
+    const wp = vn(px * 1.5 + 3, py * 1.5 + 3, pz * 1.5 + 3) * .6, n = fbm(px * 2.3 + 5 + wp, py * 2.3 + 5 + wp, pz * 2.3 + 5 + wp), ice = Math.abs(lat) > 1.22 + vn(px * 6, py * 6, pz * 6) * .12;
+    let R, G, B;
+    if (n > .53) {
+      const e = (n - .53) / .47, m = fbm(px * 3 + 30, py * 3 + 30, pz * 3 + 30), tp = 1 - Math.abs(lat) / 1.5708;
+      if (ice || (e > .7 && tp < .75)) R = G = B = 240;
+      else if (e > .48) { R = 112 + e * 50; G = 104 + e * 45; B = 94 + e * 40; }
+      else if (m < .42 && tp > .35 && tp < .85) { R = 205 - e * 60; G = 172 - e * 50; B = 108 - e * 30; }
+      else if (tp < .3) { R = 140; G = 140; B = 118; }
+      else { const f = clamp((m - .4) * 2.5, 0, 1); R = 90 - f * 52; G = 130 - f * 42; B = 54 - f * 22; }
+      EM.l[o] = clamp((vn(px * 9 + 3, py * 9 + 3, pz * 9 + 3) - .55) * 6, 0, 1) * (fbm(px * 3 + 70, py * 3 + 70, pz * 3 + 70) > .45 ? 255 : 80) * (tp > .25 && e < .45 ? 1 : 0);
+    } else if (ice) { R = G = B = 235; }
+    else { const cd = Math.pow(1 - clamp((.53 - n) / .45, 0, 1), 2.4); R = 4 + cd * 40; G = 26 + cd * 120; B = 70 + cd * 110; EM.o[o] = 255; }
+    EM.d[o * 3] = R; EM.d[o * 3 + 1] = G; EM.d[o * 3 + 2] = B;
+    EM.c[o] = clamp((fbm(px * 2.6 + 50, py * 2.6 + 50, pz * 2.6 + 50) * .7 + vn(px * 7 + 9, py * 7 + 9, pz * 7 + 9) * .3 - .5) * 3.6, 0, 1) * 235;
   }
-  const ES = 200, NF = 24, dayF = [], litF = [], disc = [];
-  for (let j = 0; j < ES; j++) for (let i = 0; i < ES; i++) { const px = (i + .5) / ES * 2 - 1, py = (j + .5) / ES * 2 - 1, r2 = px * px + py * py; if (r2 > 1) continue;
-    disc.push(j * ES + i, Math.atan2(px, Math.sqrt(1 - r2)), clamp(Math.floor((Math.asin(-py) / Math.PI + .5) * TH), 0, TH - 1)); }
-  for (let f = 0; f < NF; f++) {
-    const rot = f / NF * TAU, cd = document.createElement('canvas'), cl = document.createElement('canvas'); cd.width = cd.height = cl.width = cl.height = ES;
-    const xd = cd.getContext('2d'), xl = cl.getContext('2d'), id = xd.createImageData(ES, ES), il = xl.createImageData(ES, ES);
-    for (let k = 0; k < disc.length; k += 3) { const p = disc[k] * 4, u = (((disc[k + 1] + rot) / TAU) % 1 + 1) % 1, o = disc[k + 2] * TW + Math.min(TW - 1, Math.floor(u * TW));
-      id.data[p] = dayT[o * 3]; id.data[p + 1] = dayT[o * 3 + 1]; id.data[p + 2] = dayT[o * 3 + 2]; id.data[p + 3] = 255; il.data[p] = 255; il.data[p + 1] = 200; il.data[p + 2] = 110; il.data[p + 3] = litT[o]; }
-    xd.putImageData(id, 0, 0); xl.putImageData(il, 0, 0); dayF.push(cd); litF.push(cl);
+  const bmap = fn => { const m = new Uint8Array(BW * BH * 3); for (let j = 0; j < BH; j++) for (let i = 0; i < BW; i++) { const lon = (i + .5) / BW * TAU, lat = ((j + .5) / BH - .5) * Math.PI, cl = Math.cos(lat), c = fn(cl * Math.cos(lon), Math.sin(lat), cl * Math.sin(lon), lat, lon), o = (j * BW + i) * 3; m[o] = clamp(c[0], 0, 255); m[o + 1] = clamp(c[1], 0, 255); m[o + 2] = clamp(c[2], 0, 255); } return m; };
+  const craters = (m, n, dk) => { for (let k = 0; k < n; k++) { const cx = rnd() * BW, cy = rnd() * BH, r = 1 + Math.pow(rnd(), 3) * 9;
+    for (let y = Math.max(0, Math.floor(cy - r)); y < Math.min(BH, cy + r); y++) for (let x = Math.floor(cx - r); x < cx + r; x++) { const d = Math.hypot(x - cx, y - cy) / r; if (d >= 1) continue;
+      const o = (y * BW + ((x % BW) + BW) % BW) * 3, f = d < .75 ? 1 - dk : 1 + dk * .7; m[o] = Math.min(255, m[o] * f); m[o + 1] = Math.min(255, m[o + 1] * f); m[o + 2] = Math.min(255, m[o + 2] * f); } } };
+  const TX = {
+    moon: bmap((x, y, z) => { const g = .6 + .45 * fbm(x * 9, y * 9, z * 9), c = fbm(x * 1.7 + 11, y * 1.7 + 11, z * 1.7 + 11) > .56 ? [78, 78, 84] : [178, 174, 166]; return c.map(v => v * g); }),
+    mercury: bmap((x, y, z) => { const g = .55 + .55 * fbm(x * 8, y * 8, z * 8); return [152 * g, 142 * g, 130 * g]; }),
+    venus: bmap((x, y, z, lat) => { const w = fbm(x * 1.3 + 2, y * 4 + 2, z * 1.3 + 2), k = .62 + .5 * w + .12 * Math.sin(lat * 9 + w * 6); return [238 * k, 206 * k, 150 * k]; }),
+    mars: bmap((x, y, z, lat) => { const g = .7 + .5 * fbm(x * 8, y * 8, z * 8), c = Math.abs(lat) > 1.38 ? [240, 240, 245] : fbm(x * 2.2 + 4, y * 2.2 + 4, z * 2.2 + 4) > .52 ? [104, 58, 44] : [196, 106, 62]; return c.map(v => v * g); }),
+    jupiter: bmap((x, y, z, lat, lon) => { const w = fbm(x * 2, y * 9, z * 2), b = .5 + .5 * Math.sin(lat * 17 + w * 5); let c = [L(238, 172, b), L(216, 122, b), L(188, 86, b)];
+      const dl = Math.atan2(Math.sin(lon - 2.2), Math.cos(lon - 2.2)), e = (dl / .22) ** 2 + ((lat + .33) / .09) ** 2; if (e < 1) c = [L(c[0], 196, 1 - e), L(c[1], 92, 1 - e), L(c[2], 64, 1 - e)]; return c; }),
+    saturn: bmap((x, y, z, lat) => { const w = fbm(x * 2, y * 8, z * 2), b = .5 + .5 * Math.sin(lat * 13 + w * 3); return [L(238, 205, b), L(214, 180, b), L(160, 130, b)]; }),
+    uranus: bmap((x, y, z) => { const w = .93 + .12 * fbm(x * 2, y * 7, z * 2); return [160 * w, 214 * w, 224 * w]; }),
+    neptune: bmap((x, y, z) => { const k = .65 + .5 * fbm(x * 2, y * 9, z * 2), h = clamp((fbm(x * 3, y * 14, z * 3) - .62) * 6, 0, 1); return [40 * k + 200 * h, 80 * k + 200 * h, 200 * k + 200 * h]; })
+  };
+  craters(TX.moon, 320, .3); craters(TX.mercury, 420, .35); craters(TX.mars, 80, .22);
+  const bd = (t, atm, ac, limb, amb, col) => ({ t, atm, ak: 34, ac, limb, amb, col, c: {} });
+  const BD = { earth: { t: EM.d, atm: .12, ak: 36, ac: [90, 160, 255], limb: .35, amb: .012, earth: 1, col: '#4a8fe0', c: {} },
+    moon: bd(TX.moon, 0, [0, 0, 0], .25, .012, '#b9b9b9'), mercury: bd(TX.mercury, 0, [0, 0, 0], .3, .012, '#b8b0a4'), venus: bd(TX.venus, .06, [255, 225, 170], .55, .03, '#e8c88a'),
+    mars: bd(TX.mars, .035, [240, 170, 120], .35, .015, '#d9663c'), jupiter: bd(TX.jupiter, .025, [220, 190, 160], .6, .02, '#d8b48a'), saturn: bd(TX.saturn, .02, [230, 205, 150], .6, .02, '#e3cf9a'),
+    uranus: bd(TX.uranus, .04, [150, 230, 240], .5, .03, '#8fd8e0'), neptune: bd(TX.neptune, .04, [80, 120, 255], .5, .03, '#4a62d8') };
+  const KEY = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'], RMIN = [2.6, 3.2, 3.6, 2.8, 7, 6, 4.8, 4.8];
+
+  // per-pixel sphere shader: lambert + soft terminator + limb darkening; Earth adds ocean glint, clouds, city lights, atmosphere
+  function sprite(b, S, spin, cspin, lx, ly) {
+    let c = b.c[S];
+    if (!c) { c = b.c[S] = document.createElement('canvas'); c.width = c.height = S; c.x = c.getContext('2d'); c.im = c.x.createImageData(S, S); c.n = new Float32Array(S * S * 4); c.t = new Float32Array(S * S);
+      const rr = 1 / (1 + b.atm);
+      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const o = j * S + i, u = ((i + .5) / S * 2 - 1) / rr, v = ((j + .5) / S * 2 - 1) / rr, r2 = u * u + v * v, z = Math.sqrt(Math.max(0, 1 - r2));
+        c.n[o * 4] = u; c.n[o * 4 + 1] = v; c.n[o * 4 + 2] = r2 <= 1 ? z : -1; c.n[o * 4 + 3] = Math.atan2(u, z); c.t[o] = clamp(Math.asin(clamp(-v, -1, 1)) / Math.PI + .5, 0, .9999); } }
+    const d = c.im.data, n = c.n, tl = c.t, e = b.earth, T = b.t, tw = e ? TW : BW, th = e ? TH : BH, A = b.ac, ak = b.atm;
+    const ll = Math.hypot(lx, ly, .28), Lx = lx / ll, Ly = ly / ll, Lz = .28 / ll, hz = Lz + 1, hl = Math.hypot(Lx, Ly, hz);
+    for (let o = 0; o < S * S; o++) {
+      const p = o * 4, u = n[p], v = n[p + 1], nz = n[p + 2];
+      if (nz < 0) {
+        if (!ak) { d[p + 3] = 0; continue; }
+        const r = Math.sqrt(u * u + v * v), h = Math.exp(-(r - 1) * b.ak), I = h * clamp((u / r * Lx + v / r * Ly) * .8 + .35, 0, 1);
+        d[p] = A[0]; d[p + 1] = A[1]; d[p + 2] = A[2]; d[p + 3] = Math.min(255, I * 280); continue;
+      }
+      const df = u * Lx + v * Ly + nz * Lz, k0 = clamp((df + .06) / .3, 0, 1), k = k0 * k0 * (3 - 2 * k0), row = Math.floor(tl[o] * th) * tw;
+      const ti = row + Math.floor((((n[p + 3] + spin) / TAU) % 1 + 1) % 1 * tw) % tw, sh = b.amb + k * (1 - b.limb * (1 - nz));
+      let R = T[ti * 3] * sh, G = T[ti * 3 + 1] * sh, B = T[ti * 3 + 2] * sh;
+      if (e) {
+        if (EM.o[ti]) { const hd = Math.max(0, (u * Lx + v * Ly + nz * hz) / hl), sp = Math.pow(hd, 80) * k * 200; R += sp; G += sp; B += sp * .95; }
+        const ci = row + Math.floor((((n[p + 3] + cspin) / TAU) % 1 + 1) % 1 * tw) % tw, ca = EM.c[ci] / 255, cl = (.03 + k * 1.05) * 255;
+        R = R * (1 - ca) + cl * ca; G = G * (1 - ca) + cl * ca; B = B * (1 - ca) + cl * ca * 1.02;
+        const nk = 1 - clamp((df + .04) / .22, 0, 1), lt = EM.l[ti] / 255 * nk * (1 - ca * .8); R += 255 * lt; G += 190 * lt; B += 100 * lt;
+      }
+      if (ak) { const f = Math.pow(1 - nz, 2.4), tt = Math.exp(-df * df / .014) * .7, g = f * (.18 + k * 1.1); R += A[0] * g + 255 * f * tt; G += A[1] * g + 120 * f * tt; B += A[2] * g + 50 * f * tt; }
+      d[p] = R > 255 ? 255 : R; d[p + 1] = G > 255 ? 255 : G; d[p + 2] = B > 255 ? 255 : B;
+      d[p + 3] = 255 * clamp((1 - Math.sqrt(u * u + v * v)) * S * .5 / (1 + ak) + .5, 0, 1);
+    }
+    c.x.putImageData(c.im, 0, 0); return c;
   }
 
-  const MS = 128, moon = document.createElement('canvas'); moon.width = moon.height = MS;
-  { const x = moon.getContext('2d'), im = x.createImageData(MS, MS), d = im.data;
-    for (let j = 0; j < MS; j++) for (let i = 0; i < MS; i++) { const px = (i + .5) / MS * 2 - 1, py = (j + .5) / MS * 2 - 1, r2 = px * px + py * py; if (r2 > 1) continue; const pz = Math.sqrt(1 - r2), o = (j * MS + i) * 4,
-      c = (155 + (fbm(px * 7, py * 7, pz * 7) - .5) * 80) * (fbm(px * 1.8 + 30, py * 1.8 + 30, pz * 1.8 + 30) > .53 ? .6 : 1); d[o] = c; d[o + 1] = c * .98; d[o + 2] = c * .94; d[o + 3] = 255; }
-    x.putImageData(im, 0, 0);
-    for (let k = 0; k < 34; k++) { const a = rnd() * TAU, q = Math.sqrt(rnd()) * .85, cx = MS / 2 + Math.cos(a) * q * MS / 2, cy = MS / 2 + Math.sin(a) * q * MS / 2, r = 1.5 + rnd() * 6, g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, 'rgba(50,48,45,.55)'); g.addColorStop(.8, 'rgba(50,48,45,.25)'); g.addColorStop(1, 'rgba(255,255,255,.18)'); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fill(); } }
+  // Sun: limb-darkened, granulated photosphere with sunspots + streamer corona
+  const SUNT = document.createElement('canvas'); SUNT.width = SUNT.height = 160;
+  { const N = 160, x = SUNT.getContext('2d'), im = x.createImageData(N, N), d = im.data;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const u = (i + .5) / N * 2 - 1, v = (j + .5) / N * 2 - 1, r2 = u * u + v * v, p = (j * N + i) * 4; if (r2 > 1) continue;
+      const mu = Math.sqrt(1 - r2); let I = (1 - .62 * (1 - mu)) * (.88 + (fbm(u * 13 + 4, v * 13 + 4, mu * 13 + 4) - .5) * .5 + (vn(u * 40, v * 40, mu * 40) - .5) * .12);
+      I *= 1 - clamp((vn(u * 3 + 8, v * 3 + 8, mu * 3 + 8) - .74) * 7, 0, .85) * (Math.abs(v) < .55 ? 1 : 0);
+      d[p] = Math.min(255, 260 * I); d[p + 1] = Math.min(255, (205 + 45 * Math.pow(mu, .6)) * I); d[p + 2] = Math.min(255, (95 + 125 * Math.pow(mu, 1.4)) * I); d[p + 3] = 255 * clamp((1 - Math.sqrt(r2)) * N / 2 + .5, 0, 1); }
+    x.putImageData(im, 0, 0); }
+  const COR = document.createElement('canvas'); COR.width = COR.height = 320;
+  { const N = 320, x = COR.getContext('2d'), im = x.createImageData(N, N), d = im.data;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const u = (i + .5) / N * 2 - 1, v = (j + .5) / N * 2 - 1, r = Math.hypot(u, v), p = (j * N + i) * 4, rho = r * 3.5; if (rho < .95 || r > 1) continue;
+      const th = Math.atan2(v, u), st = clamp((fbm(Math.cos(th) * 2.4 + 3, Math.sin(th) * 2.4 + 3, rho * .3) - .33) * 3, 0, 1), f = Math.exp(-(rho - 1) * 1.35) * .85 + .1 / (rho * rho);
+      d[p] = 255 - rho * 8; d[p + 1] = 246 - rho * 14; d[p + 2] = 225; d[p + 3] = 255 * clamp(f * (.45 + st * 1.3) * (1 - ss(r, .8, 1)), 0, 1); }
+    x.putImageData(im, 0, 0); }
+
+  // galaxy texture: luminous arms, bulge, dust lanes, pink star-forming knots
+  function galTex(N, arms, idx) {
+    const c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d'), im = x.createImageData(N, N), d = im.data, b0 = idx ? .06 : .09;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const u = (i + .5) / N * 2 - 1, v = (j + .5) / N * 2 - 1, r = Math.hypot(u, v), p = (j * N + i) * 4; if (r > 1) continue;
+      const ph = Math.atan2(v, u) - Math.log(Math.max(r, .02) / .06) / .35, arm = Math.pow(.5 + .5 * Math.cos(arms * ph), 3), nz = fbm(u * 7 + idx * 5, v * 7, 3), n2 = vn(u * 22, v * 22, idx);
+      let lum = Math.exp(-r * 3.4) * (.18 + arm * 1.1) * (.55 + nz * .9) + Math.exp(-Math.pow(r / b0, 1.3)) * 1.5;
+      lum *= 1 - .6 * Math.pow(.5 + .5 * Math.cos(arms * (ph + .85)), 5) * ss(r, .12, .45) * nz; lum *= 1 - ss(r, .8, 1);
+      const t = clamp(r * 1.6, 0, 1), hii = arm * n2 > .62 && r > .15 ? (arm * n2 - .62) * 3 : 0;
+      d[p] = Math.min(255, L(255, 165, t) + hii * 120); d[p + 1] = Math.min(255, L(214, 198, t) + hii * 20); d[p + 2] = Math.min(255, L(160, 255, t) + hii * 70); d[p + 3] = Math.min(255, lum * 255); }
+    x.putImageData(im, 0, 0); return c;
+  }
+
   // ---------- data ----------
-  const PL = [['عطارد', .387, 2.44e6, '#b8b8b8', .241, .206, 7], ['زهره', .723, 6.05e6, '#e8c88a', .615, .007, 3.4], ['زمین', 1, 6.371e6, '#4a8fe0', 1, .017, 0], ['مریخ', 1.524, 3.39e6, '#d9663c', 1.881, .093, 1.85],
-    ['مشتری', 5.203, 6.99e7, '#d8b48a', 11.86, .048, 1.3], ['زحل', 9.537, 5.82e7, '#e3cf9a', 29.46, .056, 2.5], ['اورانوس', 19.19, 2.54e7, '#8fd8e0', 84, .047, .77], ['نپتون', 30.07, 2.46e7, '#4a62d8', 164.8, .009, 1.77], ['پلوتون', 39.5, 1.19e6, '#cdb9a4', 247.9, .249, 17.2]];
-  const ph = PL.map(() => rnd() * TAU), OR = PL.map(p => ({ w: rnd() * TAU, o: rnd() * TAU, i: p[6] * Math.PI / 180 }));
-  const orb3 = (i, xp, yp) => { const q = OR[i], c = Math.cos(q.w), sw = Math.sin(q.w); const x = xp * c - yp * sw; let y = xp * sw + yp * c; const z = y * Math.sin(q.i); y *= Math.cos(q.i); const co = Math.cos(q.o), so = Math.sin(q.o); return [x * co - y * so, x * so + y * co, z]; };
-  const opos = (i, t) => { const p = PL[i], a = p[1] * AU, e = p[5], M = ph[i] + TAU * t / (80 * p[4]); let E = M; for (let k = 0; k < 5; k++) E = M + e * Math.sin(E); return orb3(i, a * (Math.cos(E) - e), a * Math.sqrt(1 - e * e) * Math.sin(E)); };
+  const PL = [['عطارد', .387, 2.44e6, '#b8b8b8', .241], ['زهره', .723, 6.05e6, '#e8c88a', .615], ['زمین', 1, 6.371e6, '#4a8fe0', 1], ['مریخ', 1.524, 3.39e6, '#d9663c', 1.881],
+    ['مشتری', 5.203, 6.99e7, '#d8b48a', 11.86], ['زحل', 9.537, 5.82e7, '#e3cf9a', 29.46], ['اورانوس', 19.19, 2.54e7, '#8fd8e0', 84], ['نپتون', 30.07, 2.46e7, '#4a62d8', 164.8]];
+  const ph = PL.map(() => rnd() * TAU), ang = (i, t) => ph[i] + TAU * t / (80 * PL[i][4]);
   const belt = (n, f) => { const x = [], y = [], z = []; for (let i = 0; i < n; i++) { const [r, a, h] = f(); x.push(r * Math.cos(a)); y.push(r * Math.sin(a)); z.push(h); } return { x, y, z }; };
   const BELT = belt(700, () => [AU * (2.2 + rnd()), rnd() * TAU, gs() * .05 * AU]), KB = belt(600, () => [AU * (30 + rnd() * 20), rnd() * TAU, gs() * 3 * AU]);
   const OORT = belt(1000, () => { const r = AU * Math.pow(10, 3.3 + rnd() * 1.7), u = rnd() * 2 - 1; return [r * Math.sqrt(1 - u * u), rnd() * TAU, r * u]; });
-  const LOC = { x: [], y: [], z: [] }; for (let i = 0; i < 2500; i++) { LOC.x.push(gs() * 1.2e19); LOC.y.push(gs() * 1.2e19); LOC.z.push(gs() * 6e17); }
-  function spiral(n, R, arms, incl, pa, cx, cy, bar) {
+  const LOC = { x: [], y: [], z: [] }; for (let i = 0; i < 2500; i++) { LOC.x.push(gs() * 1.2e19); LOC.y.push(gs() * 1.2e19); LOC.z.push(gs() * 1.2e19); }
+  const NS = [['آلفا قنطورس', 4.37, .5], ['شباهنگ', 8.6, 4.1], ['نسر واقع', 25, .2], ['سماک رامح', 37, 3.6], ['ستاره‌ی قطبی', 430, 2.4], ['ابط‌الجوزا', 550, 1]]
+    .map(([n, d, a]) => ({ n, x: d * LY * Math.cos(a), y: d * LY * Math.sin(a), z: (rnd() - .5) * d * LY * .3 }));
+  function spiral(n, R, arms, incl, pa, cx, cy) {
     const o = [0, 1, 2].map(() => ({ x: [], y: [], z: [] })), ci = Math.cos(incl), si = Math.sin(incl), ca = Math.cos(pa), sa = Math.sin(pa);
     for (let i = 0; i < n; i++) { const k = i % 4 === 0 ? 0 : i % 16 === 1 ? 2 : 1; let x, y, z;
-      if (k === 0) { x = gs() * R * .17 * (bar ? 2.4 : 1); y = gs() * R * .17 * (bar ? .8 : 1); z = gs() * R * .1; if (bar) { const bx = x * Math.cos(.45) - y * Math.sin(.45); y = x * Math.sin(.45) + y * Math.cos(.45); x = bx; } }
+      if (k === 0) { x = gs() * R * .17; y = gs() * R * .17; z = gs() * R * .1; }
       else { const r = R * (.08 + .92 * Math.pow(rnd(), .8)), th = Math.log(r / (.06 * R)) / .35 + Math.floor(rnd() * arms) * TAU / arms + gs() * .22; x = r * Math.cos(th); y = r * Math.sin(th); z = gs() * R * .012; }
       const y1 = y * ci - z * si, z1 = y * si + z * ci; o[k].x.push(cx + x * ca - y1 * sa); o[k].y.push(cy + x * sa + y1 * ca); o[k].z.push(z1); }
     return { s: o, x: cx, y: cy, R };
   }
   const RM = 4.7e20, GA = 3.7, G = [2.46e20 * Math.cos(GA), 2.46e20 * Math.sin(GA)], A = [2.37e22 * Math.cos(.7), 2.37e22 * Math.sin(.7)];
-  const NS = [['آلفا قنطورس', 4.37, 315.7, -.7, '#ffe9a8'], ['ستاره‌ی برنارد', 5.96, 31, 14.1, '#ff9a7a'], ['شباهنگ', 8.6, 227.2, -8.9, '#cfe3ff'], ['شعرای شامی', 11.5, 213.7, 13, '#fff4d6'], ['نسر طایر', 16.7, 47.8, -8.9, '#f0f4ff'],
-    ['نسر واقع', 25, 67.4, 19.2, '#cfe3ff'], ['سماک رامح', 37, 15.2, 69.1, '#ffb877'], ['عیوق', 43, 162.6, 4.6, '#ffe9a8'], ['دبران', 65, 181, -20.2, '#ffa066'], ['ستاره‌ی قطبی', 430, 123.3, 26.5, '#fff4d6'],
-    ['ابط‌الجوزا', 550, 199.8, -9, '#ff7a55'], ['قلب‌العقرب', 550, 351.9, 15.1, '#ff6a4d'], ['رجل', 860, 209.3, -25.2, '#9fc2ff']]
-    .map(([n, d, l, b, c]) => { const D = d * LY, a = l * Math.PI / 180 + GA, e = b * Math.PI / 180; return { n, c, x: D * Math.cos(e) * Math.cos(a), y: D * Math.cos(e) * Math.sin(a), z: D * Math.sin(e) }; });
-  const VOY = [['وویجر ۱', 170, 255, 35], ['وویجر ۲', 145, 297, -33]].map(([n, d, l, b]) => { const D = d * AU, a = l * Math.PI / 180, e = b * Math.PI / 180; return { n, x: D * Math.cos(e) * Math.cos(a), y: D * Math.cos(e) * Math.sin(a), z: D * Math.sin(e) }; });
-  const GALS = [spiral(9000, RM, 4, .08, 0, G[0], G[1], 1), spiral(2600, 1.05e21, 2, 1.3, .6, A[0], A[1]), spiral(900, 2.8e20, 2, .9, 1, A[0] + 7e21 * Math.cos(1.5), A[1] + 7e21 * Math.sin(1.5))];
-  GALS[0].n = 'راه شیری'; GALS[1].n = 'آندرومدا'; GALS[2].n = 'مثلث';
+  const GP = [[6000, RM, 4, .08, 0], [1500, 1.05e21, 2, 1.3, .6], [600, 2.8e20, 2, .9, 1]], GCn = [G, A, [A[0] + 7e21 * Math.cos(1.5), A[1] + 7e21 * Math.sin(1.5)]];
+  const GALS = GP.map((q, i) => { const g = spiral(q[0], q[1], q[2], q[3], q[4], GCn[i][0], GCn[i][1]); g.incl = q[3]; g.pa = q[4]; g.n = ['راه شیری', 'آندرومدا', 'مثلث'][i]; g.tex = galTex([320, 224, 160][i], q[2], i); return g; });
   const SAT = [[1.5e21, 4.4, 6.6e19], [1.86e21, 4.2, 3.3e19]].map(([d, a, R]) => ({ x: d * Math.cos(a), y: d * Math.sin(a), R }));
   for (let i = 0; i < 14; i++) { const a = rnd() * TAU, r = 6e21 * rnd(), o = i % 2 ? A : [0, 0]; SAT.push({ x: o[0] + r * Math.cos(a), y: o[1] + r * Math.sin(a), R: 2e19 + rnd() * 4e19 }); }
 
   const NODES = [[5.1e23, -.6, 2e22, 150, 'خوشه‌ی سنبله'], [2.2e24, 2.6, 6e22, 160, 'جاذب بزرگ'], [3e24, 1.2, 8e22, 150, 'خوشه‌ی گیسو'], [6.1e24, 2.9, 1.5e23, 170, 'ابرخوشه‌ی شاپلی']]
     .map(([d, a, s, n, l]) => ({ x: d * Math.cos(a), y: d * Math.sin(a), z: gs() * d * .12, s, n, l }));
   NODES.push({ x: A[0] / 2, y: A[1] / 2, z: 0, s: 3e22, n: 120 });
-  [[9.5e24, .2, 1.3e23, 170, 'دیوار بزرگ اسلوآن'], [6.6e24, 4.5, 4e22, 10, 'حفره‌ی گاوران'], [9.5e25, 1.9, 2.5e25, 140, 'دیوار بزرگ هرکول–تاج شمالی']]
-    .forEach(([d, a, s, n, l]) => NODES.push({ x: d * Math.cos(a), y: d * Math.sin(a), z: gs() * d * .1, s, n, l }));
   for (let i = 0; i < 110; i++) { const u = rnd() * 2 - 1, a = rnd() * TAU, r = RU * .95 * Math.cbrt(rnd()), q = Math.sqrt(1 - u * u); NODES.push({ x: r * q * Math.cos(a), y: r * q * Math.sin(a), z: r * u, s: RU * .008, n: 26 }); }
   const WF = { x: [], y: [], z: [] }, WC = { x: [], y: [], z: [] }, add = (S, x, y, z) => { S.x.push(x); S.y.push(y); S.z.push(z); };
   NODES.forEach(a => {
@@ -128,21 +195,23 @@
     NODES.map(b => [Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z), b]).sort((p, q) => p[0] - q[0]).slice(1, 4).forEach(([len, b]) => {
       for (let k = 0, c = Math.floor(len / RU * 240); k < c; k++) { const t = rnd(), e = RU * .007; add(WF, L(a.x, b.x, t) + gs() * e, L(a.y, b.y, t) + gs() * e, L(a.z, b.z, t) + gs() * e); } });
   });
+  const PK = [[0, [0, 0, 110]], [.28, [0, 90, 255]], [.45, [130, 205, 255]], [.55, [255, 246, 205]], [.72, [255, 172, 64]], [.9, [200, 44, 22]], [1, [110, 0, 12]]];
+  const planck = v => { for (let i = 1; i < PK.length; i++) if (v <= PK[i][0]) { const a = PK[i - 1], b = PK[i], t = (v - a[0]) / (b[0] - a[0]); return [L(a[1][0], b[1][0], t), L(a[1][1], b[1][1], t), L(a[1][2], b[1][2], t)]; } return PK[6][1]; };
   const cmb = document.createElement('canvas'); cmb.width = cmb.height = 512;
-  { const x = cmb.getContext('2d'), cols = ['59,42,107', '123,45,94', '209,80,58', '242,166,90', '70,60,140']; x.fillStyle = 'rgb(90,45,110)'; x.fillRect(0, 0, 512, 512);
-    for (let i = 0; i < 600; i++) { const px = rnd() * 512, py = rnd() * 512, r = 6 + rnd() * 22, c = cols[Math.floor(rnd() * 5)], g = x.createRadialGradient(px, py, 0, px, py, r);
-      g.addColorStop(0, `rgba(${c},.7)`); g.addColorStop(1, `rgba(${c},0)`); x.fillStyle = g; x.fillRect(px - r, py - r, 2 * r, 2 * r); }
-    x.globalCompositeOperation = 'destination-in'; const m = x.createRadialGradient(256, 256, 0, 256, 256, 256);
-    m.addColorStop(0, 'rgba(0,0,0,0)'); m.addColorStop(.935, 'rgba(0,0,0,0)'); m.addColorStop(.975, 'rgba(0,0,0,1)'); m.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = m; x.fillRect(0, 0, 512, 512); }
-  const BG = Array.from({ length: 160 }, () => [rnd(), rnd(), rnd() * .6 + .2]);
+  { const N = 512, x = cmb.getContext('2d'), im = x.createImageData(N, N), d = im.data, rr = 1 / 1.1;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const u = ((i + .5) / N * 2 - 1) / rr, v = ((j + .5) / N * 2 - 1) / rr, r = Math.hypot(u, v), p = (j * N + i) * 4; if (r > 1.12 || r < .8) continue;
+      if (r > 1) { d[p] = 255; d[p + 1] = 150; d[p + 2] = 70; d[p + 3] = Math.exp(-(r - 1) * 55) * 150; continue; }
+      const z = Math.sqrt(1 - r * r), c = planck(clamp((fbm(u * 5 + 9, v * 5 + 9, z * 5 + 9) * .65 + vn(u * 16 + 3, v * 16 + 3, z * 16 + 3) * .35 - .3) * 1.8, 0, 1));
+      d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255 * Math.pow(clamp((r - .8) / .2, 0, 1), 1.4); }
+    x.putImageData(im, 0, 0); }
+  const BG = Array.from({ length: 220 }, () => { const q = rnd(); return [rnd(), rnd(), rnd() * .6 + .25, q < .15 ? '#aac4ff' : q < .7 ? '#fff' : q < .9 ? '#ffe2b0' : '#ffb98a', rnd() < .08 ? 2 : 1.2]; });
 
-  const LV = [[8.7, 'زمین', 'قطر ۱۲٬۷۴۲ کیلومتر؛ حدود ۷۱٪ سطحش آب است و محورش ۲۳٫۴ درجه کج است.'], [10.2, 'زمین و ماه', 'ماه ۳۸۴٬۰۰۰ کیلومتر دورتر است؛ نورش ۱٫۳ ثانیه طول می‌کشد تا به ما برسد.'],
-    [12.3, 'منظومه‌ی شمسی درونی', 'عطارد، زهره، زمین و مریخ؛ نور خورشید ۸ دقیقه و ۲۰ ثانیه تا زمین راه می‌آید.'], [13.4, 'منظومه‌ی شمسی', 'مدار سیاره‌ها بیضی‌ست و تقریباً هم‌صفحه‌اند؛ نپتون ۳۰ برابر دورتر از زمین است.'],
-    [14.8, 'کمربند کایپر و هلیوپاز', 'هلیوپاز حدود ۱۲۰ برابر فاصله‌ی زمین تا خورشید است؛ وویجر ۱ و ۲ از آن گذشته‌اند.'], [16.3, 'ابر اورت', 'ابر اورت احتمالاً تا حدود یک سال نوری ادامه دارد و خانه‌ی دنباله‌دارهای دوره‌بلند است.'],
-    [18.5, 'همسایگی ستاره‌ای', 'نزدیک‌ترین ستاره‌ی بعد از خورشید، پروکسیما قنطورس، ۴٫۲ سال نوری دورتر است.'], [19.4, 'حباب محلی', 'خورشید در حفره‌ای کم‌چگال به پهنای حدود ۳۰۰ سال نوری قرار دارد.'],
-    [21.7, 'کهکشان راه شیری', 'صدها میلیارد ستاره در پهنای ۱۰۰٬۰۰۰ سال نوری؛ ما حدود ۲۶٬۰۰۰ سال نوری از مرکز دوریم.'], [23.3, 'گروه محلی', 'بیش از ۸۰ کهکشان؛ آندرومدا ۲٫۵ میلیون سال نوری دورتر است و به سوی ما می‌آید.'],
-    [25, 'ابرخوشه‌ی محلی', 'حدود ۱۱۰ میلیون سال نوری پهنا؛ خوشه‌ی سنبله در مرکز آن است.'], [26.2, 'شبکه‌ی کیهانی', 'کهکشان‌ها روی رشته‌های عظیم نشسته‌اند و میانشان حفره‌های تهی است؛ ما در لانیاکیا (حدود ۵۲۰ میلیون سال نوری) هستیم.'],
-    [99, 'جهان قابل مشاهده', 'شعاع حدود ۴۶ میلیارد سال نوری؛ حلقه‌ی رنگی تابش زمینه‌ی کیهانی است، قدیمی‌ترین نور جهان.']];
+  const LV = [[8.7, 'زمین', 'قطر زمین حدود ۱۲٬۷۴۲ کیلومتر است.'], [10.2, 'زمین و ماه', 'ماه حدود ۳۸۴٬۰۰۰ کیلومتر دورتر است؛ نور در ۱٫۳ ثانیه به آن می‌رسد.'],
+    [12.3, 'منظومه‌ی شمسی درونی', 'نور خورشید حدود ۸ دقیقه و ۲۰ ثانیه تا زمین راه می‌آید.'], [14.3, 'منظومه‌ی شمسی', 'نپتون ۳۰ برابر دورتر از زمین از خورشید است.'],
+    [16.3, 'کمربند کایپر و ابر اورت', 'ابر اورت احتمالاً تا حدود یک سال نوری ادامه دارد.'], [19.4, 'همسایگی ستاره‌ای', 'نزدیک‌ترین ستاره‌ی بعد از خورشید حدود ۴٫۲ سال نوری فاصله دارد.'],
+    [21.7, 'کهکشان راه شیری', 'صدها میلیارد ستاره در پهنایی حدود ۱۰۰٬۰۰۰ سال نوری.'], [23.3, 'گروه محلی', 'بیش از ۸۰ کهکشان؛ آندرومدا بزرگ‌ترینشان است.'],
+    [25, 'ابرخوشه‌ی محلی', 'حدود ۱۱۰ میلیون سال نوری پهنا، با ده‌ها هزار کهکشان.'], [26.2, 'شبکه‌ی کیهانی', 'کهکشان‌ها روی رشته‌های عظیمی می‌نشینند و میانشان حفره‌های تهی است.'],
+    [99, 'جهان قابل مشاهده', 'قطر حدود ۹۳ میلیارد سال نوری؛ فراتر از این مرز، نوری هنوز به ما نرسیده.']];
   const UN = [['کیلومتر', 1e3], ['واحد نجومی', AU], ['سال نوری', LY], ['میلیون سال نوری', LY * 1e6], ['میلیارد سال نوری', LY * 1e9]];
   const unit = m => m < 3e10 ? UN[0] : m < 1e15 ? UN[1] : m < LY * 1e6 ? UN[2] : m < LY * 1e9 ? UN[3] : UN[4];
   const LT = [[60, 1, 'ثانیه'], [3600, 60, 'دقیقه'], [86400, 3600, 'ساعت'], [3.156e7, 86400, 'روز'], [3.156e10, 3.156e7, 'سال'], [3.156e13, 3.156e10, 'هزار سال'], [3.156e16, 3.156e13, 'میلیون سال'], [1e99, 3.156e16, 'میلیارد سال']];
@@ -176,47 +245,34 @@
   }
   const label = (txt, x, y, a, col = '#cfe0ff') => { if (a < .02) return; ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.globalAlpha = 1; };
   const orbit = (x, y, R, a) => { if (R > 6 && R < 4000) { ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(x, y, R, R * sp, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } };
-  function orbitPath(i, a) {
-    const p = PL[i], R = p[1] * AU / mpp; if (R < 6 || R > 4000) return; const e = p[5], A_ = p[1] * AU, B_ = A_ * Math.sqrt(1 - e * e);
-    ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.beginPath();
-    for (let k = 0; k <= 96; k++) { const E_ = k / 96 * TAU, q = orb3(i, A_ * (Math.cos(E_) - e), B_ * Math.sin(E_)); pj(q[0], q[1], q[2]); if (k) ctx.lineTo(PX, PY); else ctx.moveTo(PX, PY); }
-    ctx.stroke(); ctx.globalAlpha = 1;
+  function drawBody(b, x, y, r, lx, ly, spin, cspin) {
+    if (r < 2.4) { ctx.fillStyle = b.col; ctx.beginPath(); ctx.arc(x, y, Math.max(r, 1.4), 0, TAU); ctx.fill(); return; }
+    const R = r * (1 + b.atm), S = [32, 48, 64, 96, 128, 192, 256, 320].find(q => q >= 2 * R * dpr) || 320;
+    ctx.drawImage(sprite(b, S, spin, cspin, lx, ly), x - R, y - R, 2 * R, 2 * R);
   }
-  function ball(x, y, r, col, lx, ly) {
-    if (r < 1.8) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, Math.max(r, 1.4), 0, TAU); ctx.fill(); return; }
-    const g = ctx.createRadialGradient(x + lx * r * .4, y + ly * r * .4, r * .1, x, y, r); g.addColorStop(0, '#fff'); g.addColorStop(.25, col); g.addColorStop(1, '#05060c');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  function rings(x, y, r, back) {
+    const q = clamp(sp * .5 + .1, .1, .6); ctx.save(); ctx.translate(x, y); ctx.rotate(-.3); ctx.lineWidth = Math.max(1, r * .13); ctx.strokeStyle = '#d9c7a0';
+    [[1.3, .22], [1.42, .32], [1.55, .45], [1.68, .85], [1.8, .92], [1.92, .8], [2.1, .7], [2.2, .52], [2.3, .22]].forEach(([k, a]) => { ctx.globalAlpha = a * .8; ctx.beginPath(); ctx.ellipse(0, 0, r * k, r * k * q, 0, back ? Math.PI : 0, back ? TAU : Math.PI); ctx.stroke(); });
+    ctx.restore();
   }
-  function drawEarth(x, y, r, lx, ly) {
-    if (r < 5) { ctx.fillStyle = '#4a8fe0'; ctx.beginPath(); ctx.arc(x, y, Math.max(r, 1.5), 0, TAU); ctx.fill(); return; }
-    const f = ((t / 40 * NF) % NF + NF) % NF, i = Math.min(NF - 1, Math.floor(f)), fr = f - i, j = (i + 1) % NF, d = 2 * r;
-    ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip();
-    ctx.save(); ctx.translate(x, y); ctx.rotate(-.41); ctx.drawImage(dayF[i], -r, -r, d, d); ctx.globalAlpha = fr; ctx.drawImage(dayF[j], -r, -r, d, d); ctx.restore();
-    const g = ctx.createLinearGradient(x + lx * r, y + ly * r, x - lx * r, y - ly * r);
-    g.addColorStop(0, 'rgba(0,0,12,0)'); g.addColorStop(.5, 'rgba(0,0,12,.05)'); g.addColorStop(.78, 'rgba(0,0,12,.82)'); g.addColorStop(1, 'rgba(0,0,12,.96)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, d, d);
-    ctx.globalCompositeOperation = 'lighter'; ctx.translate(x, y); ctx.rotate(-.41); ctx.globalAlpha = .9 * (1 - fr); ctx.drawImage(litF[i], -r, -r, d, d); ctx.globalAlpha = .9 * fr; ctx.drawImage(litF[j], -r, -r, d, d); ctx.restore();
-    ctx.globalCompositeOperation = 'lighter'; const a = ctx.createRadialGradient(x, y, r * .96, x, y, r * 1.14);
-    a.addColorStop(0, 'rgba(90,160,255,.5)'); a.addColorStop(1, 'rgba(90,160,255,0)'); ctx.fillStyle = a; ctx.beginPath(); ctx.arc(x, y, r * 1.14, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
+  function drawTex(g, a) {
+    const k = 2 * g.R / mpp / g.tex.width, ci = Math.cos(g.incl), si = Math.sin(g.incl), ca = Math.cos(g.pa), sa = Math.sin(g.pa), f = (X, Y, Z) => [X * cps - Y * sps, -((X * sps + Y * cps) * sp + Z * cp)];
+    const [ax, ay] = f(ca, sa, 0), [bx, by] = f(-sa * ci, ca * ci, si); ctx.save(); ctx.setTransform(dpr * ax * k, dpr * ay * k, dpr * bx * k, dpr * by * k, dpr * PX, dpr * PY);
+    ctx.globalAlpha = a; ctx.drawImage(g.tex, -g.tex.width / 2, -g.tex.width / 2); ctx.restore();
   }
 
-  function drawMoon(x, y, r, lx, ly) {
-    if (r < 2.5) { ball(x, y, r, '#b9b9b9', lx, ly); return; }
-    ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip(); ctx.drawImage(moon, x - r, y - r, 2 * r, 2 * r);
-    const g = ctx.createLinearGradient(x + lx * r, y + ly * r, x - lx * r, y - ly * r);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.5, 'rgba(0,0,0,.08)'); g.addColorStop(.78, 'rgba(0,0,6,.85)'); g.addColorStop(1, 'rgba(0,0,6,.97)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, 2 * r, 2 * r); ctx.restore();
-  }
   function draw() {
     mpp = Math.pow(10, s) / W; hw = W / 2; hh = H / 2;
     const psi = -.35 + .22 * (s - SMIN) + t * .012, phi = .5 + .5 * ss(s, 18, 20.5) - .3 * ss(s, 22.5, 25);
     cps = Math.cos(psi); sps = Math.sin(psi); cp = Math.cos(phi); sp = Math.sin(phi);
-    const E = opos(2, t);
+    const eA = ang(2, t), E = [AU * Math.cos(eA), AU * Math.sin(eA)];
     let w = ss(s, 9.3, 10.6); ox = E[0] * (1 - w); oy = E[1] * (1 - w);
     w = ss(s, 19, 20.8); ox = L(ox, G[0], w); oy = L(oy, G[1], w);
     w = ss(s, 21.4, 22.6); ox = L(ox, A[0] / 2, w); oy = L(oy, A[1] / 2, w);
     w = ss(s, 23.6, 25); ox *= 1 - w; oy *= 1 - w;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    const bgA = 1 - ss(s, 21, 23); if (bgA > .01) { ctx.fillStyle = '#fff'; BG.forEach(b => { ctx.globalAlpha = b[2] * bgA * (.4 + .2 * Math.sin(t * 2 + b[0] * 40)); ctx.fillRect(b[0] * W, b[1] * H, 1.2, 1.2); }); ctx.globalAlpha = 1; }
+    const bgA = 1 - ss(s, 21, 23); if (bgA > .01) { BG.forEach(b => { ctx.globalAlpha = b[2] * bgA * (.55 + .35 * Math.sin(t * 2 + b[0] * 40)); ctx.fillStyle = b[3]; ctx.fillRect(b[0] * W, b[1] * H, b[4], b[4]); }); ctx.globalAlpha = 1; }
     ctx.font = '12px Vazirmatn, sans-serif'; ctx.textAlign = 'center'; ctx.globalCompositeOperation = 'lighter';
 
     pts(BELT, ss(s, 10.7, 11.7) * (1 - ss(s, 13, 14)) * .6, 1.1, '#c9b79c');
@@ -227,48 +283,48 @@
     const gv = [ss(s, 18.3, 20), ss(s, 19.5, 20.5) * (1 - ss(s, 24, 25)), ss(s, 19.5, 20.5) * (1 - ss(s, 24, 25))];
     GALS.forEach((g, i) => {
       pj(g.x, g.y, 0); const pr = g.R / mpp, v = gv[i]; if (v < .01 || PX < -pr * 2 - 60 || PX > W + pr * 2 + 60 || PY < -pr * 2 - 60 || PY > H + pr * 2 + 60) return;
-      const pa = ss(pr, 14, 60) * v, sz = clamp(.9 + pr / 500, .9, 2.2);
-      pts(g.s[0], pa * .8, sz, '#ffd9a0'); pts(g.s[1], pa * .75, sz, '#bcd6ff'); pts(g.s[2], pa * .7, sz + .4, '#ff9cc4');
-      const gz = Math.max(g.R * 2.6 / mpp, 6); ctx.globalAlpha = v * .6 * (1 - ss(pr, 60, 400) * .75); ctx.drawImage(i ? GB : GO, PX - gz / 2, PY - gz / 2, gz, gz); ctx.globalAlpha = 1;
+      const ta = ss(pr, 5, 22) * v; if (ta > .01) drawTex(g, ta);
+      const pa = ss(pr, 120, 450) * v, sz = clamp(.9 + pr / 600, .9, 2.2);
+      pts(g.s[0], pa * .7, sz, '#ffd9a0'); pts(g.s[1], pa * .65, sz, '#bcd6ff'); pts(g.s[2], pa * .6, sz + .4, '#ff9cc4');
+      const gz = Math.max(g.R * 2.6 / mpp, 6); ctx.globalAlpha = v * .6 * (1 - ss(pr, 12, 60)); ctx.drawImage(i ? GB : GO, PX - gz / 2, PY - gz / 2, gz, gz); ctx.globalAlpha = 1;
     });
     const sv = gv[1]; if (sv > .01) SAT.forEach(g => { pj(g.x, g.y, 0); const sz = Math.max(g.R * 2.4 / mpp, 3); if (PX > -sz && PX < W + sz && PY > -sz && PY < H + sz) { ctx.globalAlpha = sv * .8; ctx.drawImage(GB, PX - sz / 2, PY - sz / 2, sz, sz); ctx.globalAlpha = 1; } });
     const wA = ss(s, 22.4, 24.2); pts(WF, wA * .5, 1.1, '#9fb8ff'); pts(WC, wA * .8, 1.3, '#ffd6a8');
     if (wA > .01) NODES.forEach(n => { pj(n.x, n.y, n.z); const sz = Math.max(n.s * 12 / mpp, 6); if (PX > -sz && PX < W + sz && PY > -sz && PY < H + sz) { ctx.globalAlpha = wA * (n.n > 100 ? .5 : .22); ctx.drawImage(GO, PX - sz / 2, PY - sz / 2, sz, sz); ctx.globalAlpha = 1; } });
     ctx.globalCompositeOperation = 'source-over';
 
-    NS.forEach(n => { pj(n.x, n.y, n.z); if (PX < 0 || PX > W || PY < 0 || PY > H) return; ctx.globalAlpha = aL; ctx.fillStyle = n.c; ctx.beginPath(); ctx.arc(PX, PY, 2.4, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label(n.n, PX, PY - 8, aL * .9); });
-    pj(G[0], G[1], 0); label('مرکز کهکشان · سیاه‌چاله‌ی کمان A*', PX, PY + 24, ss(s, 20.6, 21.2) * (1 - ss(s, 21.8, 22.4)), '#ffd9a0');
+    NS.forEach(n => { pj(n.x, n.y, n.z); if (PX < 0 || PX > W || PY < 0 || PY > H) return; ctx.globalAlpha = aL; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(PX, PY, 2, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label(n.n, PX, PY - 8, aL * .9); });
     GALS.forEach((g, i) => { pj(g.x, g.y, 0); const a = i === 0 ? ss(s, 20.2, 21) * (1 - ss(s, 22.8, 23.6)) : ss(s, 21.3, 22.3) * (1 - ss(s, 23.2, 24)); label(g.n, PX, PY - Math.max(g.R * sp / mpp, 4) - 10, a); });
     const nlA = ss(s, 23.4, 24.2) * (1 - ss(s, 26.2, 26.7)); NODES.forEach(n => { if (n.l) { pj(n.x, n.y, n.z); label(n.l, PX, PY - 12, nlA * .9); } });
-    const lA = ss(s, 24.6, 25.4) * (1 - ss(s, 26.6, 27)), nA = NODES.find(n => n.l === 'جاذب بزرگ'), nB = NODES.find(n => n.l === 'حفره‌ی گاوران');
-    if (lA > .01) { ctx.setLineDash([6, 6]); ctx.globalAlpha = lA * .5; ctx.strokeStyle = '#a8c4ff';
-      [[nA, .8, 2.5e24], [nB, 1, 1.56e24]].forEach(([n, f, R]) => { pj(n.x * f, n.y * f, n.z * f); ctx.beginPath(); ctx.arc(PX, PY, R / mpp, 0, TAU); ctx.stroke(); });
-      ctx.setLineDash([]); ctx.globalAlpha = 1; pj(nA.x * .8, nA.y * .8, nA.z * .8); label('ابرخوشه‌ی لانیاکیا', PX, PY - 2.5e24 / mpp - 8, lA, '#c9d8ff'); }
-    const cs = 2 * RU / mpp, cA = ss(s, 25.6, 26.6); pj(0, 0, 0);
+    const cs = 2.2 * RU / mpp, cA = ss(s, 25.6, 26.6); pj(0, 0, 0);
     if (cA > .01 && cs < 16000) { ctx.globalAlpha = cA; ctx.drawImage(cmb, PX - cs / 2, PY - cs / 2, cs, cs); ctx.globalAlpha = 1; label('مرز جهان قابل مشاهده', PX, PY + RU / mpp + 22, ss(s, 26.3, 26.9), '#ffc9a0'); }
 
     // solar system
     const aP = 1 - ss(s, 13.2, 14.4); pj(0, 0, 0); const sx = PX, sy = PY;
     if (aP > .01) {
-      PL.forEach((p, i) => orbitPath(i, aP));
+      PL.forEach(p => orbit(sx, sy, p[1] * AU / mpp, aP));
       if (s < 10.6) { pj(E[0], E[1], 0); orbit(PX, PY, 3.844e8 / mpp, 1); }
       PL.forEach((p, i) => {
-        const [wx, wy, wz] = opos(i, t); pj(wx, wy, wz); const x = PX, y = PY; if (x < -80 || x > W + 80 || y < -80 || y > H + 80) return;
-        const r = p[2] / mpp, dl = Math.hypot(sx - x, sy - y) || 1, lx = (sx - x) / dl, ly = (sy - y) / dl; ctx.globalAlpha = aP;
-        if (i === 2) { drawEarth(x, y, r, lx, ly); const ma = t * TAU / 6, mr = 1.737e6 / mpp; pj(wx + 3.844e8 * Math.cos(ma), wy + 3.844e8 * Math.sin(ma), wz);
-          drawMoon(PX, PY, mr, lx, ly); label('ماه', PX, PY - Math.max(mr, 2) - 7, ss(s, 8.4, 8.9) * (1 - ss(s, 9.6, 10.2)) * aP); }
-        else { ball(x, y, r, p[3], lx, ly); if (i === 5 && r > 4) { ctx.strokeStyle = 'rgba(227,207,154,.7)'; ctx.beginPath(); ctx.ellipse(x, y, r * 2.1, r * 2.1 * sp * .35 + r * .25, -.3, 0, TAU); ctx.stroke(); } }
+        const a = ang(i, t), wx = p[1] * AU * Math.cos(a), wy = p[1] * AU * Math.sin(a); pj(wx, wy, 0); const x = PX, y = PY; if (x < -150 || x > W + 150 || y < -150 || y > H + 150) return;
+        const r = Math.max(p[2] / mpp, RMIN[i]), dl = Math.hypot(sx - x, sy - y) || 1, lx = (sx - x) / dl, ly = (sy - y) / dl; ctx.globalAlpha = aP;
+        if (i === 5 && r > 4) rings(x, y, r, true);
+        drawBody(BD[KEY[i]], x, y, r, lx, ly, t * (i === 2 ? .157 : .3), t * (i === 2 ? .17 : .1));
+        if (i === 5 && r > 4) rings(x, y, r, false);
+        if (i === 2) { const ma = t * TAU / 6, mr = Math.max(1.737e6 / mpp, 1.8); pj(wx + 3.844e8 * Math.cos(ma), wy + 3.844e8 * Math.sin(ma), 0);
+          drawBody(BD.moon, PX, PY, mr, lx, ly, .9, 0); label('ماه', PX, PY - Math.max(mr, 2) - 7, ss(s, 8.4, 8.9) * (1 - ss(s, 9.6, 10.2)) * aP); }
         ctx.globalAlpha = 1;
         label(p[0], x, y - Math.max(r, 2) - 7, i === 2 ? (ss(s, 8.2, 8.5) * (1 - ss(s, 8.8, 9.3)) + ss(s, 9.6, 10.3) * (1 - ss(s, 13, 13.8))) * aP : ss(p[1] * AU / mpp, 30, 60) * aP);
       });
     }
-    const hA = ss(s, 12.3, 13.2) * (1 - ss(s, 14.8, 15.6));
-    if (hA > .01) { const R = 120 * AU / mpp;
-      if (R < 4000) { ctx.setLineDash([5, 6]); ctx.globalAlpha = hA * .6; ctx.strokeStyle = '#8fb8ff'; ctx.beginPath(); ctx.arc(sx, sy, R, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; label('هلیوپاز', sx, sy - R - 8, hA, '#9cc4ff'); }
-      VOY.forEach(v => { pj(v.x, v.y, v.z); ctx.globalAlpha = hA; ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.arc(PX, PY, 2.5, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label(v.n, PX, PY - 9, hA, '#ffe39a'); }); }
-    const sunR = Math.max(6.96e8 / mpp, 1.6), sunA = 1 - ss(s, 19, 20.5);
-    if (sunA > .01 && sx > -4000 && sx < W + 4000) { const gz = (sunR * 5 + 14) * (1 + .04 * Math.sin(t * 2)); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = sunA; ctx.drawImage(GO, sx - gz * 1.6, sy - gz * 1.6, gz * 3.2, gz * 3.2); ctx.drawImage(GW, sx - gz, sy - gz, 2 * gz, 2 * gz);
-      ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(sx, sy, sunR, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label('خورشید', sx, sy - sunR - gz * .35 - 6, aP * ss(s, 10.5, 11.2)); }
+    const sunR = Math.max(6.96e8 / mpp, 1.8), sunA = 1 - ss(s, 19, 20.5);
+    if (sunA > .01 && sx > -4000 && sx < W + 4000) {
+      const gz = (sunR * 5 + 14) * (1 + .04 * Math.sin(t * 2)); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = sunA * .8; ctx.drawImage(GO, sx - gz * 1.6, sy - gz * 1.6, gz * 3.2, gz * 3.2);
+      if (sunR > 6) { ctx.save(); ctx.translate(sx, sy); ctx.rotate(t * .01); ctx.globalAlpha = sunA * (.8 + .12 * Math.sin(t * 1.3)); ctx.drawImage(COR, -sunR * 3.5, -sunR * 3.5, sunR * 7, sunR * 7); ctx.restore(); }
+      else { ctx.globalAlpha = sunA; ctx.drawImage(GW, sx - gz, sy - gz, 2 * gz, 2 * gz); }
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = sunA;
+      if (sunR > 6) { ctx.save(); ctx.translate(sx, sy); ctx.rotate(t * .02); ctx.drawImage(SUNT, -sunR, -sunR, 2 * sunR, 2 * sunR); ctx.restore(); }
+      else { ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(sx, sy, sunR, 0, TAU); ctx.fill(); }
+      ctx.globalAlpha = 1; label('خورشید', sx, sy - sunR * (sunR > 6 ? 1.5 : 1) - gz * .15 - 6, aP * ss(s, 10.5, 11.2)); }
 
     // "we are here" beacon
     const mA = ss(s, 13.6, 15.2); pj(E[0], E[1], 0);
