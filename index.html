@@ -60,23 +60,29 @@
   const vn = (x, y, z) => { const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), f = q => q * q * (3 - 2 * q), u = f(x - xi), v = f(y - yi), w = f(z - zi);
     return L(L(L(H3(xi, yi, zi), H3(xi + 1, yi, zi), u), L(H3(xi, yi + 1, zi), H3(xi + 1, yi + 1, zi), u), v), L(L(H3(xi, yi, zi + 1), H3(xi + 1, yi, zi + 1), u), L(H3(xi, yi + 1, zi + 1), H3(xi + 1, yi + 1, zi + 1), u), v), w); };
   const fbm = (x, y, z) => vn(x, y, z) * .5 + vn(x * 2, y * 2, z * 2) * .25 + vn(x * 4, y * 4, z * 4) * .125 + vn(x * 8, y * 8, z * 8) * .0625;
-  const TW = 384, TH = 192, BW = 256, BH = 128, EM = { d: new Uint8Array(TW * TH * 3), c: new Uint8Array(TW * TH), l: new Uint8Array(TW * TH), o: new Uint8Array(TW * TH) };
+  const fb3 = (x, y, z) => vn(x, y, z) * .57 + vn(x * 2, y * 2, z * 2) * .29 + vn(x * 4, y * 4, z * 4) * .14;
+  const TW = 512, TH = 256, BW = 256, BH = 128, EM = { d: new Uint8Array(TW * TH * 3), c: new Uint8Array(TW * TH), l: new Uint8Array(TW * TH), o: new Uint8Array(TW * TH), h: new Uint8Array(TW * TH) };
   for (let j = 0; j < TH; j++) for (let i = 0; i < TW; i++) {
     const lon = (i + .5) / TW * TAU, lat = ((j + .5) / TH - .5) * Math.PI, cl = Math.cos(lat), px = cl * Math.cos(lon), py = Math.sin(lat), pz = cl * Math.sin(lon), o = j * TW + i;
-    const wp = vn(px * 1.5 + 3, py * 1.5 + 3, pz * 1.5 + 3) * .6, n = fbm(px * 2.3 + 5 + wp, py * 2.3 + 5 + wp, pz * 2.3 + 5 + wp), ice = Math.abs(lat) > 1.22 + vn(px * 6, py * 6, pz * 6) * .12;
+    const w1 = vn(px * 1.4 + 3, py * 1.4 + 3, pz * 1.4 + 3) * .7, n = fbm(px * 2.2 + 5 + w1, py * 2.2 + 5 + w1, pz * 2.2 + 5 + w1), al = Math.abs(lat), ica = al > 1.2 + vn(px * 6, py * 6, pz * 6) * .14;
     let R, G, B;
-    if (n > .53) {
-      const e = (n - .53) / .47, m = fbm(px * 3 + 30, py * 3 + 30, pz * 3 + 30), tp = 1 - Math.abs(lat) / 1.5708;
-      if (ice || (e > .7 && tp < .75)) R = G = B = 240;
-      else if (e > .48) { R = 112 + e * 50; G = 104 + e * 45; B = 94 + e * 40; }
-      else if (m < .42 && tp > .35 && tp < .85) { R = 205 - e * 60; G = 172 - e * 50; B = 108 - e * 30; }
-      else if (tp < .3) { R = 140; G = 140; B = 118; }
-      else { const f = clamp((m - .4) * 2.5, 0, 1); R = 90 - f * 52; G = 130 - f * 42; B = 54 - f * 22; }
-      EM.l[o] = clamp((vn(px * 9 + 3, py * 9 + 3, pz * 9 + 3) - .55) * 6, 0, 1) * (fbm(px * 3 + 70, py * 3 + 70, pz * 3 + 70) > .45 ? 255 : 80) * (tp > .25 && e < .45 ? 1 : 0);
-    } else if (ice) { R = G = B = 235; }
-    else { const cd = Math.pow(1 - clamp((.53 - n) / .45, 0, 1), 2.4); R = 4 + cd * 40; G = 26 + cd * 120; B = 70 + cd * 110; EM.o[o] = 255; }
-    EM.d[o * 3] = R; EM.d[o * 3 + 1] = G; EM.d[o * 3 + 2] = B;
-    EM.c[o] = clamp((fbm(px * 2.6 + 50, py * 2.6 + 50, pz * 2.6 + 50) * .7 + vn(px * 7 + 9, py * 7 + 9, pz * 7 + 9) * .3 - .5) * 3.6, 0, 1) * 235;
+    if (n > .54) {
+      const q = (n - .54) / .46, rg = 1 - Math.abs(2 * fb3(px * 5 + 20, py * 5 + 20, pz * 5 + 20) - 1), e = clamp(q * .5 + q * .9 * rg * rg, 0, 1), m = fb3(px * 3 + 30, py * 3 + 30, pz * 3 + 30),
+        dz = Math.exp(-Math.pow((al - .48) / .2, 2)) * (1.15 - m), wet = Math.exp(-Math.pow(lat / .3, 2)) * (.5 + m * .6), v1 = .85 + .3 * vn(px * 30, py * 30, pz * 30);
+      EM.h[o] = 25 + e * 230;
+      if (ica || e > .8 || (e > .6 && al > .9)) { R = 240; G = 244; B = 248; }
+      else if (e > .46) { R = (112 + e * 55) * v1; G = (104 + e * 48) * v1; B = (95 + e * 42) * v1; }
+      else if (dz > .55) { R = 212 * v1; G = 178 * v1; B = 118 * v1; }
+      else if (dz > .38) { R = 170 * v1; G = 150 * v1; B = 84 * v1; }
+      else if (al > 1.12) { R = 128; G = 134; B = 114; }
+      else if (al > .9) { R = 52 * v1; G = 84 * v1; B = 60 * v1; }
+      else if (wet > .5) { R = 24 * v1; G = 80 * v1; B = 34 * v1; }
+      else { const f = clamp((m - .35) * 2.2, 0, 1); R = L(104, 54, f) * v1; G = L(138, 112, f) * v1; B = L(62, 44, f) * v1; }
+      EM.l[o] = clamp((vn(px * 11 + 3, py * 11 + 3, pz * 11 + 3) - .58) * 7, 0, 1) * (fb3(px * 3 + 70, py * 3 + 70, pz * 3 + 70) > .45 ? 255 : 80) * (al < 1.0 && e < .45 ? 1 : 0) * (q < .25 ? 1 : .7);
+    } else if (ica) { R = 236; G = 243; B = 250; }
+    else { const cd = Math.pow(1 - clamp((.54 - n) / .4, 0, 1), 3), vv = .9 + .2 * vn(px * 14, py * 14, pz * 14); R = (4 + cd * 30) * vv; G = (24 + cd * 125) * vv; B = (66 + cd * 105) * vv; EM.o[o] = 255; }
+    EM.d[o * 3] = Math.min(255, R); EM.d[o * 3 + 1] = Math.min(255, G); EM.d[o * 3 + 2] = Math.min(255, B);
+    EM.c[o] = clamp((fb3(px * 2.4 + 50 + w1, py * 3 + 50, pz * 2.4 + 50) * .75 + vn(px * 8 + 9, py * 10 + 9, pz * 8 + 9) * .25 + .1 * Math.exp(-Math.pow(lat / .12, 2)) - .5) * 3.4, 0, 1) * 240;
   }
   const bmap = fn => { const m = new Uint8Array(BW * BH * 3); for (let j = 0; j < BH; j++) for (let i = 0; i < BW; i++) { const lon = (i + .5) / BW * TAU, lat = ((j + .5) / BH - .5) * Math.PI, cl = Math.cos(lat), c = fn(cl * Math.cos(lon), Math.sin(lat), cl * Math.sin(lon), lat, lon), o = (j * BW + i) * 3; m[o] = clamp(c[0], 0, 255); m[o + 1] = clamp(c[1], 0, 255); m[o + 2] = clamp(c[2], 0, 255); } return m; };
   const craters = (m, n, dk) => { for (let k = 0; k < n; k++) { const cx = rnd() * BW, cy = rnd() * BH, r = 1 + Math.pow(rnd(), 3) * 9;
@@ -95,59 +101,70 @@
   };
   craters(TX.moon, 320, .3); craters(TX.mercury, 420, .35); craters(TX.mars, 80, .22);
   const bd = (t, atm, ac, limb, amb, col) => ({ t, atm, ak: 34, ac, limb, amb, col, c: {} });
-  const BD = { earth: { t: EM.d, atm: .12, ak: 36, ac: [90, 160, 255], limb: .35, amb: .012, earth: 1, col: '#4a8fe0', c: {} },
+  const BD = { earth: { t: EM.d, atm: .16, ak: 36, ac: [90, 160, 255], limb: .35, amb: .012, earth: 1, col: '#4a8fe0', c: {} },
     moon: bd(TX.moon, 0, [0, 0, 0], .25, .012, '#b9b9b9'), mercury: bd(TX.mercury, 0, [0, 0, 0], .3, .012, '#b8b0a4'), venus: bd(TX.venus, .06, [255, 225, 170], .55, .03, '#e8c88a'),
     mars: bd(TX.mars, .035, [240, 170, 120], .35, .015, '#d9663c'), jupiter: bd(TX.jupiter, .025, [220, 190, 160], .6, .02, '#d8b48a'), saturn: bd(TX.saturn, .02, [230, 205, 150], .6, .02, '#e3cf9a'),
     uranus: bd(TX.uranus, .04, [150, 230, 240], .5, .03, '#8fd8e0'), neptune: bd(TX.neptune, .04, [80, 120, 255], .5, .03, '#4a62d8') };
   const KEY = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'], RMIN = [2.6, 3.2, 3.6, 2.8, 7, 6, 4.8, 4.8];
 
-  // per-pixel sphere shader: lambert + soft terminator + limb darkening; Earth adds ocean glint, clouds, city lights, atmosphere
+  // per-pixel sphere shader: lambert + soft terminator; Earth adds relief shading, floating clouds with shadows, ocean glint, city lights, layered atmosphere
   function sprite(b, S, spin, cspin, lx, ly) {
-    let c = b.c[S];
-    if (!c) { c = b.c[S] = document.createElement('canvas'); c.width = c.height = S; c.x = c.getContext('2d'); c.im = c.x.createImageData(S, S); c.n = new Float32Array(S * S * 4); c.t = new Float32Array(S * S);
+    let c = b.c[S]; const e = b.earth;
+    if (!c) { const cv = document.createElement('canvas'); cv.width = cv.height = S; const x = cv.getContext('2d'); c = b.c[S] = { cv, x, im: x.createImageData(S, S), n: new Float32Array(S * S * 4), t: new Float32Array(S * S), cc: e ? new Float32Array(S * S * 2) : null };
       const rr = 1 / (1 + b.atm);
       for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const o = j * S + i, u = ((i + .5) / S * 2 - 1) / rr, v = ((j + .5) / S * 2 - 1) / rr, r2 = u * u + v * v, z = Math.sqrt(Math.max(0, 1 - r2));
-        c.n[o * 4] = u; c.n[o * 4 + 1] = v; c.n[o * 4 + 2] = r2 <= 1 ? z : -1; c.n[o * 4 + 3] = Math.atan2(u, z); c.t[o] = clamp(Math.asin(clamp(-v, -1, 1)) / Math.PI + .5, 0, .9999); } }
-    const d = c.im.data, n = c.n, tl = c.t, e = b.earth, T = b.t, tw = e ? TW : BW, th = e ? TH : BH, A = b.ac, ak = b.atm;
-    const ll = Math.hypot(lx, ly, .28), Lx = lx / ll, Ly = ly / ll, Lz = .28 / ll, hz = Lz + 1, hl = Math.hypot(Lx, Ly, hz);
+        c.n[o * 4] = u; c.n[o * 4 + 1] = v; c.n[o * 4 + 2] = r2 <= 1 ? z : -1; c.n[o * 4 + 3] = Math.atan2(u, z); c.t[o] = clamp(Math.asin(clamp(-v, -1, 1)) / Math.PI + .5, 0, .9999);
+        if (e) { const zc = Math.sqrt(Math.max(0, 1.0404 - r2)); c.cc[o * 2] = Math.atan2(u, zc); c.cc[o * 2 + 1] = clamp(Math.asin(clamp(-v / 1.02, -1, 1)) / Math.PI + .5, 0, .9999); } } }
+    const d = c.im.data, n = c.n, tl = c.t, cc = c.cc, T = b.t, tw = e ? TW : BW, th = e ? TH : BH, A = b.ac, ak = b.atm, H = EM.h, EC = EM.c, wr = a => ((a % 1) + 1) % 1;
+    const ll = Math.hypot(lx, ly, .28), Lx = lx / ll, Ly = ly / ll, Lz = .28 / ll, hz = Lz + 1, hl = Math.hypot(Lx, Ly, hz), dsh = (cspin - spin) / TAU * tw;
     for (let o = 0; o < S * S; o++) {
       const p = o * 4, u = n[p], v = n[p + 1], nz = n[p + 2];
       if (nz < 0) {
         if (!ak) { d[p + 3] = 0; continue; }
-        const r = Math.sqrt(u * u + v * v), h = Math.exp(-(r - 1) * b.ak), I = h * clamp((u / r * Lx + v / r * Ly) * .8 + .35, 0, 1);
-        d[p] = A[0]; d[p + 1] = A[1]; d[p + 2] = A[2]; d[p + 3] = Math.min(255, I * 280); continue;
+        const r = Math.sqrt(u * u + v * v), h = e ? Math.exp(-(r - 1) * 60) * .9 + Math.exp(-(r - 1) * 14) * .16 : Math.exp(-(r - 1) * b.ak), I = h * clamp((u / r * Lx + v / r * Ly) * .8 + .35, 0, 1);
+        d[p] = A[0] + (e ? 40 * Math.exp(-(r - 1) * 40) : 0); d[p + 1] = A[1] + (e ? 50 * Math.exp(-(r - 1) * 40) : 0); d[p + 2] = A[2]; d[p + 3] = Math.min(255, I * 280); continue;
       }
-      const df = u * Lx + v * Ly + nz * Lz, k0 = clamp((df + .06) / .3, 0, 1), k = k0 * k0 * (3 - 2 * k0), row = Math.floor(tl[o] * th) * tw;
-      const ti = row + Math.floor((((n[p + 3] + spin) / TAU) % 1 + 1) % 1 * tw) % tw, sh = b.amb + k * (1 - b.limb * (1 - nz));
+      const df = u * Lx + v * Ly + nz * Lz, ri = Math.floor(tl[o] * th), row = ri * tw, col = Math.floor(wr((n[p + 3] + spin) / TAU) * tw) % tw, ti = row + col;
+      let dfu = df, rho = 1, ex = 0, ez = 0, nx_ = 0, ny_ = 0, nz_ = 0;
+      if (e) { rho = Math.max(Math.hypot(u, nz), 1e-3); ex = nz / rho; ez = -u / rho; nx_ = v * u / rho; ny_ = -rho; nz_ = v * nz / rho;
+        if (H[ti]) { const he = H[row + (col + 1) % tw] - H[row + (col + tw - 1) % tw], hn = H[Math.min(th - 1, ri + 1) * tw + col] - H[Math.max(0, ri - 1) * tw + col], K = .0045;
+          const a1 = u - K * (he * ex + hn * nx_), a2 = v - K * (hn * ny_), a3 = nz - K * (he * ez + hn * nz_); dfu = (a1 * Lx + a2 * Ly + a3 * Lz) / Math.hypot(a1, a2, a3); } }
+      const k0 = clamp((dfu + .06) / .3, 0, 1), k = k0 * k0 * (3 - 2 * k0), kg0 = clamp((df + .06) / .3, 0, 1), kg = kg0 * kg0 * (3 - 2 * kg0), sh = b.amb + k * (1 - b.limb * (1 - nz));
       let R = T[ti * 3] * sh, G = T[ti * 3 + 1] * sh, B = T[ti * 3 + 2] * sh;
       if (e) {
-        if (EM.o[ti]) { const hd = Math.max(0, (u * Lx + v * Ly + nz * hz) / hl), sp = Math.pow(hd, 80) * k * 200; R += sp; G += sp; B += sp * .95; }
-        const ci = row + Math.floor((((n[p + 3] + cspin) / TAU) % 1 + 1) % 1 * tw) % tw, ca = EM.c[ci] / 255, cl = (.03 + k * 1.05) * 255;
+        const lE = Lx * ex + Lz * ez, lN = Lx * nx_ + Ly * ny_ + Lz * nz_, sc = Math.floor(col + dsh + lE * 4), sr = clamp(ri + Math.round(lN * 3), 0, th - 1), shd = 1 - .5 * kg * EC[sr * tw + (((sc % tw) + tw) % tw)] / 255;
+        R *= shd; G *= shd; B *= shd;
+        if (EM.o[ti]) { const fr = Math.pow(1 - nz, 3.5), hd = Math.max(0, (u * Lx + v * Ly + nz * hz) / hl), spc = (Math.pow(hd, 110) * 255 + Math.pow(hd, 16) * 30) * kg, sky = fr * (.1 + .9 * kg);
+          R += 120 * sky + spc; G += 170 * sky + spc; B += 235 * sky + spc * .95; }
+        const ca = EC[Math.floor(cc[o * 2 + 1] * th) * tw + Math.floor(wr((cc[o * 2] + cspin) / TAU) * tw) % tw] / 255, cl = (.03 + kg * 1.0) * 255 * (1 - .22 * ca);
         R = R * (1 - ca) + cl * ca; G = G * (1 - ca) + cl * ca; B = B * (1 - ca) + cl * ca * 1.02;
         const nk = 1 - clamp((df + .04) / .22, 0, 1), lt = EM.l[ti] / 255 * nk * (1 - ca * .8); R += 255 * lt; G += 190 * lt; B += 100 * lt;
       }
-      if (ak) { const f = Math.pow(1 - nz, 2.4), tt = Math.exp(-df * df / .014) * .7, g = f * (.18 + k * 1.1); R += A[0] * g + 255 * f * tt; G += A[1] * g + 120 * f * tt; B += A[2] * g + 50 * f * tt; }
+      if (ak) { const f = Math.pow(1 - nz, 2.2), tt = Math.exp(-df * df / .012) * .7, g = f * (.14 + kg * 1.0); R += A[0] * g + 255 * f * tt + (e ? 255 * f * f * kg * .1 : 0); G += A[1] * g + 120 * f * tt + (e ? 255 * f * f * kg * .1 : 0); B += A[2] * g + 50 * f * tt + (e ? 255 * f * f * kg * .1 : 0); }
       d[p] = R > 255 ? 255 : R; d[p + 1] = G > 255 ? 255 : G; d[p + 2] = B > 255 ? 255 : B;
       d[p + 3] = 255 * clamp((1 - Math.sqrt(u * u + v * v)) * S * .5 / (1 + ak) + .5, 0, 1);
     }
-    c.x.putImageData(c.im, 0, 0); return c;
+    c.x.putImageData(c.im, 0, 0); return c.cv;
   }
 
-  // Sun: limb-darkened, granulated photosphere with sunspots + streamer corona
-  const SUNT = document.createElement('canvas'); SUNT.width = SUNT.height = 160;
-  { const N = 160, x = SUNT.getContext('2d'), im = x.createImageData(N, N), d = im.data;
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const u = (i + .5) / N * 2 - 1, v = (j + .5) / N * 2 - 1, r2 = u * u + v * v, p = (j * N + i) * 4; if (r2 > 1) continue;
-      const mu = Math.sqrt(1 - r2); let I = (1 - .62 * (1 - mu)) * (.88 + (fbm(u * 13 + 4, v * 13 + 4, mu * 13 + 4) - .5) * .5 + (vn(u * 40, v * 40, mu * 40) - .5) * .12);
-      I *= 1 - clamp((vn(u * 3 + 8, v * 3 + 8, mu * 3 + 8) - .74) * 7, 0, .85) * (Math.abs(v) < .55 ? 1 : 0);
-      d[p] = Math.min(255, 260 * I); d[p + 1] = Math.min(255, (205 + 45 * Math.pow(mu, .6)) * I); d[p + 2] = Math.min(255, (95 + 125 * Math.pow(mu, 1.4)) * I); d[p + 3] = 255 * clamp((1 - Math.sqrt(r2)) * N / 2 + .5, 0, 1); }
-    x.putImageData(im, 0, 0); }
-  const COR = document.createElement('canvas'); COR.width = COR.height = 320;
-  { const N = 320, x = COR.getContext('2d'), im = x.createImageData(N, N), d = im.data;
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const u = (i + .5) / N * 2 - 1, v = (j + .5) / N * 2 - 1, r = Math.hypot(u, v), p = (j * N + i) * 4, rho = r * 3.5; if (rho < .95 || r > 1) continue;
-      const th = Math.atan2(v, u), st = clamp((fbm(Math.cos(th) * 2.4 + 3, Math.sin(th) * 2.4 + 3, rho * .3) - .33) * 3, 0, 1), f = Math.exp(-(rho - 1) * 1.35) * .85 + .1 / (rho * rho);
-      d[p] = 255 - rho * 8; d[p + 1] = 246 - rho * 14; d[p + 2] = 225; d[p + 3] = 255 * clamp(f * (.45 + st * 1.3) * (1 - ss(r, .8, 1)), 0, 1); }
-    x.putImageData(im, 0, 0); }
-
+  // Sun: animated granulation, limb darkening, faculae, sunspots, chromosphere rim; streamer corona, prominences, lens glare
+  const SUNS = {}, SPOTS = [[.25, .3, .11], [-.2, -.6, .08], [.3, 1.1, .065]].map(([la, lo, r]) => [Math.cos(la) * Math.sin(lo), -Math.sin(la), Math.cos(la) * Math.cos(lo), Math.cos(r), r]);
+  function sunSprite(S, tm) {
+    let c = SUNS[S];
+    if (!c) { const cv = document.createElement('canvas'); cv.width = cv.height = S; const x = cv.getContext('2d'); c = SUNS[S] = { cv, x, im: x.createImageData(S, S), n: new Float32Array(S * S * 3) };
+      for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const o = j * S + i, u = (i + .5) / S * 2 - 1, v = (j + .5) / S * 2 - 1, r2 = u * u + v * v; c.n[o * 3] = u; c.n[o * 3 + 1] = v; c.n[o * 3 + 2] = r2 <= 1 ? Math.sqrt(1 - r2) : -1; } }
+    const d = c.im.data, n = c.n, th = tm * .05, cth = Math.cos(th), sth = Math.sin(th), tt = tm * .35;
+    for (let o = 0; o < S * S; o++) {
+      const p = o * 4, u = n[o * 3], v = n[o * 3 + 1], mu = n[o * 3 + 2]; if (mu < 0) { d[p + 3] = 0; continue; }
+      const x = u * cth + mu * sth, z = -u * sth + mu * cth, q = 1 - mu, gr = 1 - 2 * Math.abs(vn(x * 19, v * 19, z * 19 + tt) - .5);
+      let I = (1 - .32 * q - .06 * q * q) * (.84 + .22 * (1 - gr * gr) + (vn(x * 6, v * 6, z * 6 + tt * .3) - .5) * .12 + (vn(x * 52, v * 52, z * 52 - tt) - .5) * .07);
+      I += q * clamp((vn(x * 5 + 9, v * 5 + 9, z * 5 + 9) - .6) * 4, 0, 1) * .35;
+      for (let k = 0; k < 3; k++) { const sp = SPOTS[k], dot = x * sp[0] + v * sp[1] + z * sp[2]; if (dot > sp[3]) { const dd = Math.acos(Math.min(1, dot)) / sp[4]; I *= dd < .42 ? .32 : .62 + .33 * (dd - .42) / .58; } }
+      const m7 = Math.pow(mu, .7), r = Math.sqrt(1 - mu * mu); let R = L(255, 255, m7), G = L(205, 252, m7), B = L(140, 242, m7);
+      d[p] = Math.min(255, R * I * 1.3); d[p + 1] = Math.min(255, G * I * 1.3); d[p + 2] = Math.min(255, B * I * 1.3); d[p + 3] = 255 * clamp((1 - r) * S * .5 + .5, 0, 1);
+    }
+    c.x.putImageData(c.im, 0, 0); return c.cv;
+  }
   // galaxy texture: luminous arms, bulge, dust lanes, pink star-forming knots
   function galTex(N, arms, idx) {
     const c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d'), im = x.createImageData(N, N), d = im.data, b0 = idx ? .06 : .09;
@@ -197,12 +214,13 @@
   });
   const PK = [[0, [0, 0, 110]], [.28, [0, 90, 255]], [.45, [130, 205, 255]], [.55, [255, 246, 205]], [.72, [255, 172, 64]], [.9, [200, 44, 22]], [1, [110, 0, 12]]];
   const planck = v => { for (let i = 1; i < PK.length; i++) if (v <= PK[i][0]) { const a = PK[i - 1], b = PK[i], t = (v - a[0]) / (b[0] - a[0]); return [L(a[1][0], b[1][0], t), L(a[1][1], b[1][1], t), L(a[1][2], b[1][2], t)]; } return PK[6][1]; };
-  const cmb = document.createElement('canvas'); cmb.width = cmb.height = 512;
-  { const N = 512, x = cmb.getContext('2d'), im = x.createImageData(N, N), d = im.data, rr = 1 / 1.1;
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const u = ((i + .5) / N * 2 - 1) / rr, v = ((j + .5) / N * 2 - 1) / rr, r = Math.hypot(u, v), p = (j * N + i) * 4; if (r > 1.12 || r < .8) continue;
-      if (r > 1) { d[p] = 255; d[p + 1] = 150; d[p + 2] = 70; d[p + 3] = Math.exp(-(r - 1) * 55) * 150; continue; }
-      const z = Math.sqrt(1 - r * r), c = planck(clamp((fbm(u * 5 + 9, v * 5 + 9, z * 5 + 9) * .65 + vn(u * 16 + 3, v * 16 + 3, z * 16 + 3) * .35 - .3) * 1.8, 0, 1));
-      d[p] = c[0]; d[p + 1] = c[1]; d[p + 2] = c[2]; d[p + 3] = 255 * Math.pow(clamp((r - .8) / .2, 0, 1), 1.4); }
+  const cmb = document.createElement('canvas'); cmb.width = cmb.height = 640;
+  { const N = 640, x = cmb.getContext('2d'), im = x.createImageData(N, N), d = im.data, rr = 1 / 1.1;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const u = ((i + .5) / N * 2 - 1) / rr, v = ((j + .5) / N * 2 - 1) / rr, r = Math.hypot(u, v), p = (j * N + i) * 4; if (r > 1.14 || r < .8) continue;
+      if (r > 1) { d[p] = 255; d[p + 1] = 150; d[p + 2] = 70; d[p + 3] = Math.exp(-(r - 1) * 55) * 190 + Math.exp(-(r - 1) * 12) * 40; continue; }
+      const z = Math.sqrt(1 - r * r), F = fb3(u * 3.4 + 9, v * 3.4 + 9, z * 3.4 + 9) * .5 + vn(u * 8 + 3, v * 8 + 3, z * 8 + 3) * .32 + vn(u * 20 + 1, v * 20 + 1, z * 20 + 1) * .18,
+        c = planck(clamp((F - .28) * 2.1, 0, 1)), sh = .62 + .5 * clamp(-u * .5 - v * .6 + z * .62, 0, 1), rim = Math.pow(r, 6) * .5;
+      d[p] = Math.min(255, c[0] * sh + 255 * rim); d[p + 1] = Math.min(255, c[1] * sh + 170 * rim); d[p + 2] = Math.min(255, c[2] * sh + 90 * rim); d[p + 3] = 255 * Math.pow(clamp((r - .8) / .2, 0, 1), 1.2); }
     x.putImageData(im, 0, 0); }
   const BG = Array.from({ length: 220 }, () => { const q = rnd(); return [rnd(), rnd(), rnd() * .6 + .25, q < .15 ? '#aac4ff' : q < .7 ? '#fff' : q < .9 ? '#ffe2b0' : '#ffb98a', rnd() < .08 ? 2 : 1.2]; });
 
@@ -247,8 +265,9 @@
   const orbit = (x, y, R, a) => { if (R > 6 && R < 4000) { ctx.globalAlpha = a; ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(x, y, R, R * sp, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; } };
   function drawBody(b, x, y, r, lx, ly, spin, cspin) {
     if (r < 2.4) { ctx.fillStyle = b.col; ctx.beginPath(); ctx.arc(x, y, Math.max(r, 1.4), 0, TAU); ctx.fill(); return; }
-    const R = r * (1 + b.atm), S = [32, 48, 64, 96, 128, 192, 256, 320].find(q => q >= 2 * R * dpr) || 320;
-    ctx.drawImage(sprite(b, S, spin, cspin, lx, ly), x - R, y - R, 2 * R, 2 * R);
+    const R = r * (1 + b.atm), S = [32, 48, 64, 96, 128, 192, 256, 320, 384].find(q => q >= 2 * R * dpr) || 384;
+    if (!b.cv || b.ls !== S || !b.earth || t - b.lt > .04) { b.cv = sprite(b, S, spin, cspin, lx, ly); b.ls = S; b.lt = t; }
+    ctx.drawImage(b.cv, x - R, y - R, 2 * R, 2 * R);
   }
   function rings(x, y, r, back) {
     const q = clamp(sp * .5 + .1, .1, .6); ctx.save(); ctx.translate(x, y); ctx.rotate(-.3); ctx.lineWidth = Math.max(1, r * .13); ctx.strokeStyle = '#d9c7a0';
@@ -316,15 +335,9 @@
         label(p[0], x, y - Math.max(r, 2) - 7, i === 2 ? (ss(s, 8.2, 8.5) * (1 - ss(s, 8.8, 9.3)) + ss(s, 9.6, 10.3) * (1 - ss(s, 13, 13.8))) * aP : ss(p[1] * AU / mpp, 30, 60) * aP);
       });
     }
-    const sunR = Math.max(6.96e8 / mpp, 1.8), sunA = 1 - ss(s, 19, 20.5);
-    if (sunA > .01 && sx > -4000 && sx < W + 4000) {
-      const gz = (sunR * 5 + 14) * (1 + .04 * Math.sin(t * 2)); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = sunA * .8; ctx.drawImage(GO, sx - gz * 1.6, sy - gz * 1.6, gz * 3.2, gz * 3.2);
-      if (sunR > 6) { ctx.save(); ctx.translate(sx, sy); ctx.rotate(t * .01); ctx.globalAlpha = sunA * (.8 + .12 * Math.sin(t * 1.3)); ctx.drawImage(COR, -sunR * 3.5, -sunR * 3.5, sunR * 7, sunR * 7); ctx.restore(); }
-      else { ctx.globalAlpha = sunA; ctx.drawImage(GW, sx - gz, sy - gz, 2 * gz, 2 * gz); }
-      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = sunA;
-      if (sunR > 6) { ctx.save(); ctx.translate(sx, sy); ctx.rotate(t * .02); ctx.drawImage(SUNT, -sunR, -sunR, 2 * sunR, 2 * sunR); ctx.restore(); }
-      else { ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(sx, sy, sunR, 0, TAU); ctx.fill(); }
-      ctx.globalAlpha = 1; label('خورشید', sx, sy - sunR * (sunR > 6 ? 1.5 : 1) - gz * .15 - 6, aP * ss(s, 10.5, 11.2)); }
+    const sunR = Math.max(6.96e8 / mpp, 1.6), sunA = 1 - ss(s, 19, 20.5);
+    if (sunA > .01 && sx > -4000 && sx < W + 4000) { const gz = (sunR * 5 + 14) * (1 + .04 * Math.sin(t * 2)); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = sunA; ctx.drawImage(GO, sx - gz * 1.6, sy - gz * 1.6, gz * 3.2, gz * 3.2); ctx.drawImage(GW, sx - gz, sy - gz, 2 * gz, 2 * gz);
+      ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(sx, sy, sunR, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; label('خورشید', sx, sy - sunR - gz * .35 - 6, aP * ss(s, 10.5, 11.2)); }
 
     // "we are here" beacon
     const mA = ss(s, 13.6, 15.2); pj(E[0], E[1], 0);
